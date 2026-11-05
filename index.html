@@ -1,0 +1,3707 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meisho Doto: Sky Derby 3D — Umamusume</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800;900&family=Comfortaa:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass-bg: rgba(20, 28, 44, 0.58);
+            --glass-border: rgba(255, 255, 255, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e293b;
+            font-family: 'Montserrat', sans-serif;
+            color: #fff;
+        }
+
+        #app-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+        }
+
+        /* Сферическая 3D-обтяжка 1.jpg для локального запуска через file:// (без transition на transform, чтобы не отставала от шара) */
+        #dotoSphereDecal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+            overflow: hidden;
+            display: none;
+            transform-origin: center center;
+            will-change: transform, width, height;
+        }
+
+        #dotoSphereDecal img {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            transform: scale(1.06);
+            display: block;
+        }
+
+        /* Сферический 3D-объем поверх текстуры (светотень как в Blender) */
+        #dotoSphereShading {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.08) 28%, rgba(0, 0, 0, 0) 56%),
+                radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 58%, rgba(15, 23, 42, 0.55) 100%);
+            box-shadow:
+                inset -12px -14px 24px rgba(15, 23, 42, 0.58),
+                inset 8px 10px 18px rgba(255, 255, 255, 0.32);
+        }
+
+        .decal-blurred {
+            filter: blur(7px) brightness(0.92);
+            transition: filter 0.6s ease;
+        }
+
+        .decal-sharp {
+            filter: blur(0px) brightness(1);
+            transition: filter 0.5s ease;
+        }
+
+        /* Мягкая кинематографичная виньетка без неона */
+        .ambient-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 3;
+            background: radial-gradient(circle at 50% 50%, transparent 62%, rgba(10, 15, 28, 0.45) 100%);
+            transition: opacity 0.8s ease;
+        }
+
+        /* Эффект оптической линзы (солнечное тепло / туман / изморозь по краям) */
+        .weather-lens-effect {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 4;
+            transition: all 1s ease;
+        }
+
+        /* Матовое стекло с мягкими естественными тенями (без неона) */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px) saturate(140%);
+            -webkit-backdrop-filter: blur(24px) saturate(140%);
+            border: 1px solid var(--glass-border);
+            box-shadow: 
+                0 28px 65px -15px rgba(0, 0, 0, 0.55),
+                inset 0 1px 1px rgba(255, 255, 255, 0.35);
+        }
+
+        .glass-pill {
+            background: rgba(15, 23, 42, 0.52);
+            backdrop-filter: blur(16px) saturate(140%);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+        }
+
+        /* Естественный тёплый градиент заголовка без кислотного свечения */
+        .gradient-title {
+            font-family: 'Comfortaa', cursive;
+            background: linear-gradient(135deg, #ffffff 0%, #e0f2fe 45%, #fed7aa 100%);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+        }
+
+        /* Кнопки в классическом стиле дерби (золото и тёплый янтарь) */
+        .btn-doto {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #f59e0b 0%, #ea580c 55%, #d97706 100%);
+            background-size: 200% 200%;
+            transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+            box-shadow: 
+                0 12px 26px -6px rgba(180, 83, 9, 0.5),
+                inset 0 1px 2px rgba(255, 255, 255, 0.45);
+        }
+
+        .btn-doto:hover {
+            transform: translateY(-2px) scale(1.015);
+            background-position: 100% 50%;
+            box-shadow: 
+                0 16px 32px -6px rgba(180, 83, 9, 0.65),
+                inset 0 2px 3px rgba(255, 255, 255, 0.6);
+        }
+
+        .btn-doto:active {
+            transform: translateY(1px) scale(0.985);
+        }
+
+        .btn-doto::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -60%;
+            width: 40%;
+            height: 200%;
+            background: rgba(255, 255, 255, 0.28);
+            transform: rotate(30deg);
+            transition: all 0.6s ease;
+        }
+
+        .btn-doto:hover::after {
+            left: 130%;
+        }
+
+        .avatar-float {
+            animation: floatAvatar 3.8s ease-in-out infinite;
+        }
+
+        @keyframes floatAvatar {
+            0%, 100% { transform: translateY(0px) rotate(-2deg); }
+            50% { transform: translateY(-10px) rotate(2deg); }
+        }
+
+        .avatar-ring {
+            position: relative;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+        }
+
+        .menu-transition {
+            transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .menu-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.92) translateY(15px);
+        }
+
+        .weather-chip {
+            transition: all 0.25s ease;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.07);
+        }
+        .weather-chip:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateY(-2px);
+        }
+        .weather-chip.active {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.45), rgba(56, 189, 248, 0.45));
+            border-color: rgba(255, 255, 255, 0.75);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Мягкое кинематографичное размытие 3D-сцены в меню */
+        .canvas-blurred {
+            filter: blur(7px) brightness(0.92);
+            transform: scale(1.03);
+            transition: filter 0.6s ease, transform 0.6s ease;
+        }
+        .canvas-sharp {
+            filter: blur(0px) brightness(1);
+            transform: scale(1);
+            transition: filter 0.5s ease, transform 0.5s ease;
+        }
+
+        /* Анимация сжатия плашки погоды до одних значков через 4 секунды после старта */
+        #weatherPill {
+            transition: padding 0.55s cubic-bezier(0.16, 1, 0.3, 1), gap 0.55s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #weatherTextWrap {
+            max-width: 260px;
+            opacity: 1;
+            overflow: hidden;
+            white-space: nowrap;
+            transform-origin: left center;
+            transition: max-width 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #hudCompactTimeIcon {
+            max-width: 0px;
+            opacity: 0;
+            overflow: hidden;
+            display: inline-block;
+            transform: scale(0.5);
+            transition: max-width 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #weatherPill.weather-compact {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            gap: 0px;
+        }
+        #weatherPill.weather-compact #weatherTextWrap {
+            max-width: 0px;
+            opacity: 0;
+            transform: translateX(-10px) scale(0.9);
+        }
+        #weatherPill.weather-compact #hudCompactTimeIcon {
+            max-width: 32px;
+            opacity: 1;
+            transform: scale(1);
+            margin-left: 4px;
+        }
+
+        /* Анимация скрытия кнопок рандома и звука во время забега */
+        #topRightControls {
+            transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #topRightControls.controls-hidden {
+            opacity: 0;
+            pointer-events: none !important;
+            transform: translateY(-18px) scale(0.85);
+        }
+
+        /* Анимация скрытия нижней подсказки через 3 секунды после начала игры */
+        #controlsHint {
+            transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #controlsHint.hint-hidden {
+            opacity: 0 !important;
+            transform: translate(-50%, 24px) scale(0.92);
+        }
+
+        /* Пружинистая анимация клика по Мейшо Дото в меню */
+        @keyframes dotoAvatarClickPop {
+            0% { transform: scale(1) rotate(0deg); }
+            30% { transform: scale(1.18, 0.84) rotate(-6deg); }
+            65% { transform: scale(0.92, 1.12) rotate(6deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        .avatar-click-pop {
+            animation: dotoAvatarClickPop 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Цветовые стили для кнопок сложности */
+        .diff-chip {
+            transition: all 0.25s ease;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .diff-chip:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.14);
+        }
+        .diff-chip[data-diff="easy"].active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.55), rgba(5, 150, 105, 0.45));
+            border-color: #6ee7b7;
+            box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35);
+            color: #ecfdf5;
+        }
+        .diff-chip[data-diff="normal"].active {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.55), rgba(245, 158, 11, 0.45));
+            border-color: #93c5fd;
+            box-shadow: 0 6px 18px rgba(59, 130, 246, 0.35);
+            color: #eff6ff;
+        }
+        .diff-chip[data-diff="hard"].active {
+            background: linear-gradient(135deg, rgba(244, 63, 94, 0.6), rgba(190, 18, 60, 0.5));
+            border-color: #fda4af;
+            box-shadow: 0 6px 18px rgba(244, 63, 94, 0.4);
+            color: #fff1f2;
+        }
+
+        /* Анимация вылета цифр 3 - 2 - 1 после паузы */
+        @keyframes countdownPopAnim {
+            0% {
+                opacity: 0;
+                transform: scale(0.25) translateY(45px) rotate(-10deg);
+                filter: blur(8px);
+            }
+            35% {
+                opacity: 1;
+                transform: scale(1.18) translateY(0px) rotate(2deg);
+                filter: blur(0px);
+            }
+            75% {
+                opacity: 1;
+                transform: scale(1.0) translateY(-6px) rotate(0deg);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(1.75) translateY(-30px);
+                filter: blur(6px);
+            }
+        }
+        .countdown-number-anim {
+            animation: countdownPopAnim 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Скроллбар для компактных экранов */
+        .custom-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <!-- 3D WebGL Canvas (Three.js) -->
+    <canvas id="gameCanvas" class="canvas-blurred"></canvas>
+
+    <!-- Холст для праздничного конфетти при открытии Режима Бога -->
+    <canvas id="confettiCanvas" class="pointer-events-none" style="z-index: 60;"></canvas>
+
+    <!-- Сферическая 3D-текстура 1.jpg (включается автоматически при открытии через file://, приклеена к 3D-шару без задержки) -->
+    <div id="dotoSphereDecal" class="decal-blurred">
+        <img id="dotoSphereDecalImg" src="1.jpg" alt="">
+        <div id="dotoSphereShading"></div>
+    </div>
+
+    <!-- Эмбиент и погодная оптика -->
+    <div id="ambientOverlay" class="ambient-overlay"></div>
+    <div id="weatherLens" class="weather-lens-effect"></div>
+
+    <!-- ВЕРХНИЙ HUD (Погода + Счетчик FPS + Очки + Управление) -->
+    <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none gap-2">
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <!-- Индикатор текущей 3D-погоды и времени суток (сжимается до значков через 4с после старта) -->
+            <div id="weatherPill" class="glass-pill px-4 py-2 rounded-full flex items-center gap-3">
+                <div class="flex items-center">
+                    <span id="hudWeatherIcon" class="text-2xl filter drop-shadow">☀️</span>
+                    <span id="hudCompactTimeIcon" class="text-xl filter drop-shadow">☀️</span>
+                </div>
+                <div id="weatherTextWrap">
+                    <div id="hudTimeOfDayBadge" class="text-[10px] uppercase tracking-widest text-sky-200/90 font-bold">☀️ День • Смена 10с</div>
+                    <div id="hudWeatherName" class="text-xs sm:text-sm font-extrabold text-white">Солнечный день</div>
+                </div>
+            </div>
+
+            <!-- СЧЕТЧИК FPS -->
+            <div class="glass-pill px-3.5 py-2 rounded-full flex items-center gap-2.5" title="Частота кадров 3D-движка и время кадра">
+                <span id="fpsDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+                <div class="flex flex-col leading-tight">
+                    <div class="flex items-baseline gap-1">
+                        <span id="fpsValue" class="text-sm sm:text-base font-black text-white tabular-nums">60</span>
+                        <span class="text-[10px] font-bold uppercase text-slate-300">FPS</span>
+                    </div>
+                    <span id="frameTimeValue" class="text-[9px] text-slate-300/80 font-semibold tabular-nums">16.6 ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Центральный счетчик очков и индикаторы ветра/комбо во время полета -->
+        <div id="liveScoreContainer" class="glass-pill px-6 py-2 rounded-full flex flex-col items-center opacity-0 transition-opacity duration-300">
+            <span id="liveScore" class="text-3xl sm:text-4xl font-black tracking-tight text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.45)]">0</span>
+            <span id="comboBadge" class="text-[10px] uppercase tracking-widest text-amber-300 font-bold hidden">★ Защита Дото x2 ★</span>
+            <span id="windHudBadge" class="text-[10px] uppercase tracking-widest text-cyan-300 font-extrabold hidden animate-pulse">💨 Попутный ветер! +Скорость</span>
+            <span id="godHudBadge" class="text-[9px] uppercase tracking-widest text-fuchsia-300 font-extrabold hidden">⚡ Режим Бога активен</span>
+        </div>
+
+        <!-- Правый блок кнопок: Кнопка Паузы (во время игры) + Кнопки Меню (Бог +, Рандом, Звук) -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <!-- Кнопка паузы для сенсора и ПК (появляется во время забега) -->
+            <button id="hudPauseBtn" title="Пауза (Esc)" class="glass-pill w-11 h-11 rounded-full hidden items-center justify-center hover:bg-white/20 active:scale-95 transition">
+                <span class="text-base">⏸️</span>
+            </button>
+
+            <!-- Кнопки управления в меню (скрываются с анимацией во время забега) -->
+            <div id="topRightControls" class="flex items-center gap-2">
+                <!-- Кнопка "+" для Режима Бога (появляется после 10 кликов по Мейшо Дото) -->
+                <button id="godModeOpenBtn" title="Режим Бога (Настройки)" class="glass-pill w-11 h-11 rounded-full hidden items-center justify-center bg-gradient-to-tr from-amber-500/40 to-fuchsia-500/40 border-amber-300/60 hover:scale-105 active:scale-95 transition shadow-[0_0_15px_rgba(251,191,36,0.45)]">
+                    <span class="text-xl font-black text-amber-200 leading-none">＋</span>
+                </button>
+                <button id="rerollWeatherBtn" title="Случайная погода сейчас" class="glass-pill w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/20 active:scale-95 transition">
+                    <span class="text-lg">🎲</span>
+                </button>
+                <button id="soundToggleBtn" title="Вкл/Выкл Эмбиент и Звуки" class="glass-pill w-11 h-11 rounded-full flex items-center justify-center hover:bg-white/20 active:scale-95 transition">
+                    <span id="soundIcon" class="text-lg">🔊</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ОВЕРЛЕЙ ОТСЧЕТА 3 - 2 - 1 ПРИ ВЫХОДЕ ИЗ ПАУЗЫ -->
+    <div id="countdownOverlay" class="pointer-events-none absolute inset-0 z-40 hidden items-center justify-center flex-col">
+        <div id="countdownNumber" class="text-7xl sm:text-8xl font-black text-white drop-shadow-[0_10px_28px_rgba(0,0,0,0.65)]">3</div>
+        <div class="glass-pill px-4 py-1 rounded-full text-xs uppercase tracking-widest text-amber-200 font-bold mt-3">
+            Плавный разгон...
+        </div>
+    </div>
+
+    <!-- ГЛАВНОЕ МЕНЮ -->
+    <div id="mainMenu" class="menu-transition custom-scroll max-h-[94vh] overflow-y-auto relative z-30 w-[92%] max-w-md glass-panel rounded-3xl p-5 sm:p-7 text-center flex flex-col items-center">
+        <!-- Бейдж Umamusume -->
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold tracking-wider uppercase text-amber-200 mb-3">
+            <span>🐴 Tracen Academy 3D</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span>Sky Derby</span>
+        </div>
+
+        <!-- Аватарка персонажа (1.jpg) — кликабельна (звук 2.mp3 + 10 кликов = Режим Бога) -->
+        <div id="menuAvatarClickable" class="relative my-1.5 avatar-float cursor-pointer group" title="Нажми на Мейшо Дото!">
+            <div id="menuAvatarInner" class="avatar-ring w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1.5 bg-gradient-to-tr from-amber-500 via-amber-200 to-orange-400 transition-transform">
+                <img id="menuCharacterPreview" src="1.jpg" alt="Meisho Doto" class="w-full h-full object-cover rounded-full border-2 border-white/90 bg-slate-800">
+            </div>
+            <div id="avatarTapCounterBadge" class="absolute -top-1 -right-1 bg-fuchsia-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md hidden">
+                1/10
+            </div>
+            <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-300 to-amber-500 text-slate-950 text-[11px] font-black px-3 py-0.5 rounded-full shadow-md whitespace-nowrap group-hover:scale-105 transition">
+                MEISHO DOTO 3D ★
+            </div>
+        </div>
+
+        <h1 class="gradient-title text-2xl sm:text-3xl font-black mt-3 mb-0.5 tracking-tight">
+            Meisho Doto 3D
+        </h1>
+        <p class="text-xs text-slate-100/85 font-medium mb-3.5 max-w-xs">
+            «Я-я постараюсь не врезаться!..» Лети сквозь пушистые 3D-облака и объёмную погоду!
+        </p>
+
+        <!-- Выбор сложности (Легко / Стандартно / Сложно) -->
+        <div class="w-full mb-3">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-200/80 font-bold mb-1.5 px-1">
+                <span>Сложность забега:</span>
+                <span id="difficultyModeLabel" class="text-sky-300">⚖️ Стандартно</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+                <button data-diff="easy" class="diff-chip rounded-xl py-2 px-2 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-sm">🍀 Легко</span>
+                    <span class="text-[9px] text-emerald-200/80 font-medium">Широко • Плавнее</span>
+                </button>
+                <button data-diff="normal" class="diff-chip active rounded-xl py-2 px-2 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-sm">⚖️ Стандартно</span>
+                    <span class="text-[9px] text-sky-200/80 font-medium">Баланс Дерби</span>
+                </button>
+                <button data-diff="hard" class="diff-chip rounded-xl py-2 px-2 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-sm">🔥 Сложно</span>
+                    <span class="text-[9px] text-rose-200/80 font-medium">Узко • Быстро</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Выбор режима погоды -->
+        <div class="w-full mb-3">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-200/80 font-bold mb-1.5 px-1">
+                <span>Погода при старте:</span>
+                <span id="weatherModeLabel" class="text-amber-300">🎲 Рандом каждый забег</span>
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                <button data-weather="random" class="weather-chip active rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">🎲</span>
+                    <span class="text-[10px]">Рандом</span>
+                </button>
+                <button data-weather="sunny" class="weather-chip rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">☀️</span>
+                    <span class="text-[10px]">Солнце</span>
+                </button>
+                <button data-weather="cloudy" class="weather-chip rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">☁️</span>
+                    <span class="text-[10px]">Облачно</span>
+                </button>
+                <button data-weather="rain" class="weather-chip rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">🌧️</span>
+                    <span class="text-[10px]">Дождь</span>
+                </button>
+                <button data-weather="storm" class="weather-chip rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">⛈️</span>
+                    <span class="text-[10px]">Гроза</span>
+                </button>
+                <button data-weather="snow" class="weather-chip rounded-xl py-1.5 px-1 flex flex-col items-center gap-0.5 text-xs font-bold">
+                    <span class="text-base">❄️</span>
+                    <span class="text-[10px]">Снег</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Выбор времени суток (День / Закат / Ночь, меняется каждые 10 сек, в грозу всегда Ночь) -->
+        <div class="w-full mb-3.5">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-200/80 font-bold mb-1.5 px-1">
+                <span>Старт времени (цикл 10с):</span>
+                <span id="timeModeLabel" class="text-amber-300">🎲 Рандом (Гроза = 🌙 Ночь)</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5">
+                <button data-time="random" class="time-chip weather-chip active rounded-xl py-1.5 px-1 flex items-center justify-center gap-1 text-xs font-bold">
+                    <span>🎲</span>
+                    <span class="text-[10px]">Рандом</span>
+                </button>
+                <button data-time="day" class="time-chip weather-chip rounded-xl py-1.5 px-1 flex items-center justify-center gap-1 text-xs font-bold">
+                    <span>☀️</span>
+                    <span class="text-[10px]">День</span>
+                </button>
+                <button data-time="sunset" class="time-chip weather-chip rounded-xl py-1.5 px-1 flex items-center justify-center gap-1 text-xs font-bold">
+                    <span>🌅</span>
+                    <span class="text-[10px]">Закат</span>
+                </button>
+                <button data-time="night" class="time-chip weather-chip rounded-xl py-1.5 px-1 flex items-center justify-center gap-1 text-xs font-bold">
+                    <span>🌙</span>
+                    <span class="text-[10px]">Ночь</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Статистика рекорда -->
+        <div class="w-full grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-2">
+                <div class="text-[10px] uppercase tracking-wider text-slate-200/75 font-bold">Лучший рекорд</div>
+                <div id="menuBestScore" class="text-xl font-black text-amber-300">0</div>
+            </div>
+            <div class="bg-white/5 border border-white/10 rounded-2xl p-2">
+                <div class="text-[10px] uppercase tracking-wider text-slate-200/75 font-bold">Собрано морковок</div>
+                <div id="menuTotalCarrots" class="text-xl font-black text-orange-300">🥕 0</div>
+            </div>
+        </div>
+
+        <!-- Главная кнопка старта -->
+        <button id="startBtn" class="btn-doto w-full py-3.5 rounded-2xl font-black text-lg tracking-wide uppercase text-white flex items-center justify-center gap-3 mb-2.5">
+            <span>🚀 Взлететь в 3D!</span>
+        </button>
+
+        <!-- Загрузка своего файла 1.jpg -->
+        <div class="flex items-center justify-between w-full text-[11px] text-slate-200/75 pt-1 border-t border-white/10">
+            <span id="imageStatusText">Текстура 3D: 1.jpg</span>
+            <label class="cursor-pointer text-amber-300 hover:text-amber-200 underline font-semibold">
+                Выбрать своё фото
+                <input id="customImageInput" type="file" accept="image/*" class="hidden">
+            </label>
+        </div>
+    </div>
+
+    <!-- МЕНЮ ПАУЗЫ -->
+    <div id="pauseMenu" class="menu-transition menu-hidden absolute z-40 w-[92%] max-w-sm glass-panel rounded-3xl p-6 sm:p-7 text-center flex flex-col items-center">
+        <div class="w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-3 bg-white/10 border border-white/25 shadow-lg">
+            ⏸️
+        </div>
+        <h2 class="gradient-title text-2xl sm:text-3xl font-black mb-1">Пауза</h2>
+        <p class="text-xs text-slate-200/85 mb-5">
+            При возвращении в игру запустится отсчёт 3-2-1 и плавный разгон!
+        </p>
+
+        <div class="w-full bg-white/5 border border-white/10 rounded-2xl p-3 mb-5 flex items-center justify-around">
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-300 font-bold">Текущий счёт</div>
+                <div id="pauseCurrentScore" class="text-2xl font-black text-white">0</div>
+            </div>
+            <div class="h-8 w-[1px] bg-white/15"></div>
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-amber-200 font-bold">Сложность</div>
+                <div id="pauseCurrentDiff" class="text-sm font-extrabold text-amber-300">Стандартно</div>
+            </div>
+        </div>
+
+        <button id="resumeBtn" class="btn-doto w-full py-3.5 rounded-2xl font-black text-base uppercase tracking-wide text-white mb-2.5">
+            ▶️ Продолжить забег
+        </button>
+        <div class="flex gap-2.5 w-full">
+            <button id="pauseRestartBtn" class="w-1/2 py-3 rounded-2xl font-bold text-xs uppercase bg-white/10 hover:bg-white/20 border border-white/20 transition active:scale-95">
+                🔄 Заново
+            </button>
+            <button id="pauseToMenuBtn" class="w-1/2 py-3 rounded-2xl font-bold text-xs uppercase bg-white/10 hover:bg-white/20 border border-white/20 transition active:scale-95">
+                🏠 В меню
+            </button>
+        </div>
+    </div>
+
+    <!-- СЕКРЕТНОЕ МЕНЮ РЕЖИМА БОГА (ОТКРЫВАЕТСЯ ПОСЛЕ 10 ТАПОВ НА МЕЙШО ДОТО ИЛИ КНОПКОЙ ＋) -->
+    <div id="godModeModal" class="menu-transition menu-hidden custom-scroll max-h-[92vh] overflow-y-auto absolute z-50 w-[94%] max-w-md glass-panel rounded-3xl p-5 sm:p-6 text-left flex flex-col">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-white/15">
+            <div class="flex items-center gap-2.5">
+                <span class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-400 to-fuchsia-500 flex items-center justify-center text-lg shadow">⚡</span>
+                <div>
+                    <h3 class="text-lg font-black text-white leading-tight">Режим Бога: Мейшо Дото</h3>
+                    <p class="text-[10px] text-amber-200/90 font-semibold uppercase tracking-wider">Полный контроль над 3D-миром</p>
+                </div>
+            </div>
+            <button id="closeGodModeBtn" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-sm font-bold">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+            <!-- Неуязвимость и Вечный синий огонь -->
+            <div class="grid grid-cols-2 gap-2">
+                <label class="flex items-center justify-between bg-white/5 border border-white/15 rounded-xl p-2.5 cursor-pointer hover:bg-white/10 transition">
+                    <span class="font-bold text-amber-200">🛡️ Неуязвимость</span>
+                    <input id="godInvulnerableToggle" type="checkbox" class="w-4 h-4 accent-amber-400">
+                </label>
+                <label class="flex items-center justify-between bg-white/5 border border-white/15 rounded-xl p-2.5 cursor-pointer hover:bg-white/10 transition">
+                    <span class="font-bold text-indigo-200">🔮 Синее пламя</span>
+                    <input id="godBlueFlameToggle" type="checkbox" class="w-4 h-4 accent-indigo-400">
+                </label>
+            </div>
+
+            <!-- Слайдер скорости Мейшо Дото / мира -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <div class="flex justify-between font-bold mb-1">
+                    <span>⚡ Множитель скорости:</span>
+                    <span id="godSpeedVal" class="text-amber-300">1.0x</span>
+                </div>
+                <input id="godSpeedSlider" type="range" min="0.3" max="2.8" step="0.1" value="1.0" class="w-full accent-amber-400">
+            </div>
+
+            <!-- Слайдер размера 3D-шара Мейшо Дото -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <div class="flex justify-between font-bold mb-1">
+                    <span>🎈 Размер Мейшо Дото в 3D:</span>
+                    <span id="godScaleVal" class="text-amber-300">1.0x</span>
+                </div>
+                <input id="godScaleSlider" type="range" min="0.4" max="2.2" step="0.1" value="1.0" class="w-full accent-amber-400">
+            </div>
+
+            <!-- Слайдер размера выемки для препятствий -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <div class="flex justify-between font-bold mb-1">
+                    <span>⛩️ Ширина проёма столбов:</span>
+                    <span id="godGapVal" class="text-emerald-300">Стандарт (0.0)</span>
+                </div>
+                <input id="godGapSlider" type="range" min="-2.0" max="4.5" step="0.25" value="0" class="w-full accent-emerald-400">
+            </div>
+
+            <!-- Слайдер периодичности столбов -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <div class="flex justify-between font-bold mb-1">
+                    <span>⏱️ Расстояние между столбами:</span>
+                    <span id="godSpawnVal" class="text-sky-300">1.0x</span>
+                </div>
+                <input id="godSpawnSlider" type="range" min="0.5" max="2.2" step="0.1" value="1.0" class="w-full accent-sky-400">
+            </div>
+
+            <!-- Слайдер силы прыжка -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                <div class="flex justify-between font-bold mb-1">
+                    <span>🦘 Сила 3D-прыжка:</span>
+                    <span id="godJumpVal" class="text-pink-300">1.0x</span>
+                </div>
+                <input id="godJumpSlider" type="range" min="0.5" max="1.8" step="0.1" value="1.0" class="w-full accent-pink-400">
+            </div>
+
+            <!-- Быстрые чит-действия -->
+            <div class="grid grid-cols-2 gap-2 pt-1">
+                <button id="godAddScoreBtn" class="py-2 px-3 rounded-xl font-bold bg-amber-500/20 hover:bg-amber-500/35 border border-amber-300/40 text-amber-200 transition active:scale-95">
+                    🏆 +50 Очков (Тест ветра)
+                </button>
+                <button id="godTriggerWindBtn" class="py-2 px-3 rounded-xl font-bold bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-300/40 text-cyan-200 transition active:scale-95">
+                    💨 Дунуть 3D-ветром!
+                </button>
+            </div>
+        </div>
+
+        <div class="flex gap-2.5 mt-4 pt-3 border-t border-white/15">
+            <button id="godResetBtn" class="w-1/3 py-2.5 rounded-xl font-bold text-xs bg-white/10 hover:bg-white/20 border border-white/20 transition">
+                Сбросить
+            </button>
+            <button id="godApplyCloseBtn" class="btn-doto w-2/3 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider text-white">
+                ✨ Готово
+            </button>
+        </div>
+    </div>
+
+    <!-- ЭКРАН ЗАВЕРШЕНИЯ ЗАБЕГА (GAME OVER) -->
+    <div id="gameOverMenu" class="menu-transition menu-hidden absolute z-30 w-[92%] max-w-md glass-panel rounded-3xl p-6 sm:p-8 text-center flex flex-col items-center">
+        <div id="medalBadge" class="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-3 bg-gradient-to-br from-amber-300 via-amber-500 to-orange-600 shadow-xl border-2 border-white">
+            🏆
+        </div>
+
+        <h2 class="gradient-title text-2xl sm:text-3xl font-black mb-1">Финиш забега!</h2>
+        <p id="dotoQuote" class="text-xs sm:text-sm text-slate-100/85 italic mb-5">
+            «Уваа! Простите, я снова споткнулась о барьер!..»
+        </p>
+
+        <div class="w-full grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-white/10 border border-white/15 rounded-2xl p-3">
+                <div class="text-[11px] uppercase tracking-wider text-slate-200/80 font-bold">Очки забега</div>
+                <div id="finalScore" class="text-3xl font-black text-white mt-0.5">0</div>
+            </div>
+            <div class="bg-white/10 border border-white/15 rounded-2xl p-3">
+                <div class="text-[11px] uppercase tracking-wider text-amber-200/80 font-bold">Рекорд</div>
+                <div id="finalBestScore" class="text-3xl font-black text-amber-300 mt-0.5">0</div>
+            </div>
+        </div>
+
+        <div class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 mb-5 flex items-center justify-between text-xs">
+            <span class="text-slate-200/80 font-medium">Погода этого забега:</span>
+            <span id="gameOverWeatherText" class="font-bold text-white">☀️ Солнечно</span>
+        </div>
+
+        <div class="flex gap-3 w-full">
+            <button id="backToMenuBtn" class="w-1/3 py-3.5 rounded-2xl font-bold text-sm bg-white/10 hover:bg-white/20 border border-white/20 transition active:scale-95">
+                Меню
+            </button>
+            <button id="restartBtn" class="btn-doto w-2/3 py-3.5 rounded-2xl font-black text-base uppercase tracking-wide text-white">
+                🔄 Новый забег
+            </button>
+        </div>
+    </div>
+
+    <!-- Подсказка внизу экрана -->
+    <div id="controlsHint" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center opacity-85">
+        <div class="glass-pill px-4 py-1.5 rounded-full text-[11px] sm:text-xs text-slate-100 font-semibold tracking-wide">
+            ПРОБЕЛ / КЛИК / ТАП — 3D-прыжок Мейшо Дото • Двигай мышью для 3D-обзора
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * ============================================================================
+ * MEISHO DOTO: SKY DERBY 3D — THREE.JS ДВИЖОК
+ * (КРУГЛЫЙ 3D-ШАР С UV-РАЗВЕРТКОЙ 1.jpg, АНИМАЦИЯ ФАКЕЛА НОЧЬЮ, СМЕНА СУТОК 10С, ЗОНТИК)
+ * ============================================================================
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const dotoSphereDecal = document.getElementById('dotoSphereDecal');
+const dotoSphereDecalImg = document.getElementById('dotoSphereDecalImg');
+
+// UI элементы
+const mainMenu = document.getElementById('mainMenu');
+const gameOverMenu = document.getElementById('gameOverMenu');
+const liveScoreContainer = document.getElementById('liveScoreContainer');
+const liveScoreEl = document.getElementById('liveScore');
+const comboBadge = document.getElementById('comboBadge');
+const weatherPill = document.getElementById('weatherPill');
+const hudWeatherIcon = document.getElementById('hudWeatherIcon');
+const hudCompactTimeIcon = document.getElementById('hudCompactTimeIcon');
+const hudWeatherName = document.getElementById('hudWeatherName');
+const hudTimeOfDayBadge = document.getElementById('hudTimeOfDayBadge');
+const topRightControls = document.getElementById('topRightControls');
+const controlsHint = document.getElementById('controlsHint');
+const weatherLens = document.getElementById('weatherLens');
+const menuCharacterPreview = document.getElementById('menuCharacterPreview');
+const imageStatusText = document.getElementById('imageStatusText');
+const hudPauseBtn = document.getElementById('hudPauseBtn');
+const pauseMenu = document.getElementById('pauseMenu');
+const countdownOverlay = document.getElementById('countdownOverlay');
+const countdownNumberEl = document.getElementById('countdownNumber');
+const godModeOpenBtn = document.getElementById('godModeOpenBtn');
+const godModeModal = document.getElementById('godModeModal');
+const windHudBadge = document.getElementById('windHudBadge');
+const godHudBadge = document.getElementById('godHudBadge');
+
+// Аудио 2.mp3 для нажатия на Мейшо Дото в меню
+const menuTapAudio = new Audio('2.mp3');
+menuTapAudio.preload = 'auto';
+
+// Конфигурация уровней сложности (на всех сложностях скорость со временем дополнительно растёт!)
+const DIFFICULTY_CONFIGS = {
+    easy: {
+        name: '🍀 Легко',
+        speedMul: 0.82,
+        gapBonus: 0.95,
+        spawnIntervalMul: 1.24,
+        labelColor: 'text-emerald-300'
+    },
+    normal: {
+        name: '⚖️ Стандартно',
+        speedMul: 1.0,
+        gapBonus: 0.0,
+        spawnIntervalMul: 1.0,
+        labelColor: 'text-sky-300'
+    },
+    hard: {
+        name: '🔥 Сложно',
+        speedMul: 1.26,
+        gapBonus: -0.65,
+        spawnIntervalMul: 0.82,
+        labelColor: 'text-rose-300'
+    }
+};
+let currentDifficultyKey = 'normal';
+
+// Состояние Режима Бога (открывается после 10 нажатий на аватарку Мейшо Дото в меню)
+let avatarTapCount = 0;
+let godModeUnlocked = false;
+const godConfig = {
+    invulnerable: false,
+    forceBlueFlame: false,
+    speedMult: 1.0,
+    dotoScale: 1.0,
+    gapBonus: 0.0,
+    spawnDistanceMult: 1.0,
+    jumpMult: 1.0
+};
+
+// Переменные для отсчета 3-2-1 после паузы и плавного 2-секундного разгона
+let countdownInterval = null;
+let resumeSlowMoStartTime = 0;
+const RESUME_RAMP_DURATION_MS = 2000;
+
+// Переменные для 3D Попутного ветра (появляется после 50 очков)
+let windGustActiveTimer = 0;
+let windGustCooldown = 320;
+
+// Таймеры автоматического сворачивания UI во время полета
+let hintHideTimeout = null;
+let weatherCompactTimeout = null;
+
+/**
+ * Система праздничного конфетти при разблокировке Режима Бога
+ */
+const confettiCanvas = document.getElementById('confettiCanvas');
+const confettiCtx = confettiCanvas.getContext('2d');
+let confettiParticles = [];
+
+function resizeConfettiCanvas() {
+    confettiCanvas.width = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+}
+resizeConfettiCanvas();
+window.addEventListener('resize', resizeConfettiCanvas);
+
+function launchGodModeConfetti() {
+    const colors = ['#fbbf24', '#f472b6', '#38bdf8', '#a855f7', '#34d399', '#fb7185', '#fef08a'];
+    for (let i = 0; i < 130; i++) {
+        confettiParticles.push({
+            x: window.innerWidth * 0.5 + (Math.random() - 0.5) * 180,
+            y: window.innerHeight * 0.35 + (Math.random() - 0.5) * 80,
+            vx: (Math.random() - 0.5) * 18,
+            vy: -6 - Math.random() * 14,
+            size: 6 + Math.random() * 7,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.28,
+            alpha: 1
+        });
+    }
+}
+
+function updateAndDrawConfetti() {
+    if (confettiParticles.length === 0) return;
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+        const p = confettiParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.36;
+        p.vx *= 0.985;
+        p.rot += p.vRot;
+        if (p.y > confettiCanvas.height * 0.75) {
+            p.alpha -= 0.03;
+        }
+        confettiCtx.save();
+        confettiCtx.globalAlpha = Math.max(0, p.alpha);
+        confettiCtx.translate(p.x, p.y);
+        confettiCtx.rotate(p.rot);
+        confettiCtx.fillStyle = p.color;
+        confettiCtx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+        confettiCtx.restore();
+
+        if (p.alpha <= 0 || p.y > confettiCanvas.height + 40) {
+            confettiParticles.splice(i, 1);
+        }
+    }
+    if (confettiParticles.length === 0) {
+        confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    }
+}
+
+// Элементы счетчика FPS
+const fpsValueEl = document.getElementById('fpsValue');
+const frameTimeValueEl = document.getElementById('frameTimeValue');
+const fpsDotEl = document.getElementById('fpsDot');
+
+/**
+ * Счетчик FPS с плавным усреднением и временем кадра (ms)
+ */
+const fpsTracker = {
+    frames: 0,
+    lastCheck: performance.now(),
+    lastFrameTime: performance.now(),
+    smoothedFrameMs: 16.6,
+    update(now) {
+        const dt = now - this.lastFrameTime;
+        this.lastFrameTime = now;
+        this.smoothedFrameMs = this.smoothedFrameMs * 0.9 + dt * 0.1;
+        this.frames++;
+
+        if (now - this.lastCheck >= 400) {
+            const currentFps = Math.round((this.frames * 1000) / (now - this.lastCheck));
+            fpsValueEl.textContent = currentFps;
+            frameTimeValueEl.textContent = this.smoothedFrameMs.toFixed(1) + ' ms';
+
+            if (currentFps >= 50) {
+                fpsDotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
+            } else if (currentFps >= 30) {
+                fpsDotEl.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]';
+            } else {
+                fpsDotEl.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]';
+            }
+
+            this.frames = 0;
+            this.lastCheck = now;
+        }
+    }
+};
+
+/**
+ * Загрузка 1.jpg и прямое натяжение текстуры на весь 3D-шар (как UV-текстура в Blender)
+ */
+const characterImg = new Image();
+const avatarCanvas = document.createElement('canvas');
+avatarCanvas.width = 512;
+avatarCanvas.height = 512;
+const avatarCtx = avatarCanvas.getContext('2d');
+let doto3DTexture = null;
+let useHtmlSphereDecal = false;
+
+function drawFallbackDotoDirect(ctx, W, H) {
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.45, W * 0.05, W * 0.5, H * 0.5, W * 0.7);
+    bg.addColorStop(0, '#dbeafe');
+    bg.addColorStop(0.65, '#93c5fd');
+    bg.addColorStop(1, '#3b82f6');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#2563eb';
+    ctx.beginPath();
+    ctx.arc(W * 0.5, H * 0.42, W * 0.42, Math.PI, 0, false);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff1f2';
+    ctx.beginPath();
+    ctx.ellipse(W * 0.5, H * 0.56, W * 0.36, H * 0.33, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(253, 164, 175, 0.65)';
+    ctx.beginPath();
+    ctx.ellipse(W * 0.28, H * 0.63, W * 0.075, H * 0.038, 0, 0, Math.PI * 2);
+    ctx.ellipse(W * 0.72, H * 0.63, W * 0.075, H * 0.038, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    [W * 0.35, W * 0.65].forEach(ex => {
+        ctx.fillStyle = '#1e1b4b';
+        ctx.beginPath();
+        ctx.ellipse(ex, H * 0.53, W * 0.075, H * 0.095, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#db2777';
+        ctx.beginPath();
+        ctx.ellipse(ex, H * 0.545, W * 0.058, H * 0.07, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(ex - W * 0.022, H * 0.495, W * 0.026, 0, Math.PI * 2);
+        ctx.arc(ex + W * 0.02, H * 0.57, W * 0.013, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.strokeStyle = '#881337';
+    ctx.lineWidth = W * 0.016;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(W * 0.43, H * 0.68);
+    ctx.quadraticCurveTo(W * 0.465, H * 0.72, W * 0.5, H * 0.68);
+    ctx.quadraticCurveTo(W * 0.535, H * 0.72, W * 0.57, H * 0.68);
+    ctx.stroke();
+
+    const hairGrad = ctx.createLinearGradient(0, H * 0.15, 0, H * 0.5);
+    hairGrad.addColorStop(0, '#60a5fa');
+    hairGrad.addColorStop(1, '#1d4ed8');
+    ctx.fillStyle = hairGrad;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.12, H * 0.46);
+    ctx.quadraticCurveTo(W * 0.5, H * 0.12, W * 0.88, H * 0.46);
+    ctx.lineTo(W * 0.78, H * 0.36);
+    ctx.lineTo(W * 0.66, H * 0.45);
+    ctx.lineTo(W * 0.56, H * 0.34);
+    ctx.lineTo(W * 0.5, H * 0.46);
+    ctx.lineTo(W * 0.44, H * 0.34);
+    ctx.lineTo(W * 0.34, H * 0.45);
+    ctx.lineTo(W * 0.22, H * 0.36);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function isImageTaintedForWebGL(img) {
+    try {
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 2;
+        testCanvas.height = 2;
+        const testCtx = testCanvas.getContext('2d');
+        testCtx.drawImage(img, 0, 0, 2, 2);
+        testCtx.getImageData(0, 0, 1, 1);
+        return false;
+    } catch (err) {
+        return true;
+    }
+}
+
+function update3DAvatarTexture() {
+    const W = avatarCanvas.width;
+    const H = avatarCanvas.height;
+    avatarCtx.clearRect(0, 0, W, H);
+
+    let drawnPhoto = false;
+    if (characterImg.complete && characterImg.naturalWidth > 0) {
+        if (!isImageTaintedForWebGL(characterImg)) {
+            avatarCtx.drawImage(characterImg, 0, 0, W, H);
+            drawnPhoto = true;
+            useHtmlSphereDecal = false;
+            dotoSphereDecal.style.display = 'none';
+        } else {
+            useHtmlSphereDecal = true;
+            dotoSphereDecalImg.src = characterImg.src;
+            dotoSphereDecal.style.display = 'block';
+        }
+    }
+
+    if (!drawnPhoto) {
+        drawFallbackDotoDirect(avatarCtx, W, H);
+    }
+
+    if (doto3DTexture) {
+        doto3DTexture.needsUpdate = true;
+    }
+}
+
+const fallbackPreviewCanvas = document.createElement('canvas');
+fallbackPreviewCanvas.width = 256;
+fallbackPreviewCanvas.height = 256;
+drawFallbackDotoDirect(fallbackPreviewCanvas.getContext('2d'), 256, 256);
+const fallbackDataUrl = fallbackPreviewCanvas.toDataURL('image/png');
+
+characterImg.onload = () => {
+    menuCharacterPreview.src = characterImg.src;
+    update3DAvatarTexture();
+};
+characterImg.onerror = () => {
+    const savedCustomPhoto = localStorage.getItem('doto_custom_photo_data');
+    if (savedCustomPhoto && characterImg.src !== savedCustomPhoto) {
+        characterImg.src = savedCustomPhoto;
+        imageStatusText.textContent = 'Текстура 3D: 1.jpg (Сохр.)';
+    } else if (characterImg.src !== fallbackDataUrl) {
+        characterImg.src = fallbackDataUrl;
+        menuCharacterPreview.src = fallbackDataUrl;
+        imageStatusText.textContent = '1.jpg (3D скин Дото)';
+    }
+};
+
+const cachedPhoto = localStorage.getItem('doto_custom_photo_data');
+characterImg.src = cachedPhoto ? cachedPhoto : '1.jpg';
+
+document.getElementById('customImageInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        characterImg.src = ev.target.result;
+        menuCharacterPreview.src = ev.target.result;
+        imageStatusText.textContent = '3D шар: ' + file.name.slice(0, 14);
+        try {
+            localStorage.setItem('doto_custom_photo_data', ev.target.result);
+        } catch (err) {}
+    };
+    reader.readAsDataURL(file);
+});
+
+/**
+ * ============================================================================
+ * ПРОЦЕДУРНЫЙ ЗВУКОВОЙ ДВИЖОК (Web Audio API): ЭМБИЕНТ ПОГОДЫ + SFX
+ * ============================================================================
+ */
+class SoundEngine {
+    constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.ambientGain = null;
+        this.noiseNode = null;
+        this.filterNode = null;
+    }
+
+    init() {
+        if (this.ctx) {
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            return;
+        }
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        this.ctx = new AudioCtx();
+
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            b0 = 0.99886 * b0 + white * 0.0555179;
+            b1 = 0.99332 * b1 + white * 0.0750759;
+            b2 = 0.96900 * b2 + white * 0.1538520;
+            b3 = 0.86650 * b3 + white * 0.3104856;
+            b4 = 0.55000 * b4 + white * 0.5329522;
+            b5 = -0.7616 * b5 - white * 0.0168980;
+            data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.04;
+            b6 = white * 0.115926;
+        }
+
+        this.noiseNode = this.ctx.createBufferSource();
+        this.noiseNode.buffer = buffer;
+        this.noiseNode.loop = true;
+
+        this.filterNode = this.ctx.createBiquadFilter();
+        this.filterNode.type = 'lowpass';
+        this.filterNode.frequency.value = 600;
+
+        this.ambientGain = this.ctx.createGain();
+        this.ambientGain.gain.value = 0.01;
+
+        this.noiseNode.connect(this.filterNode);
+        this.filterNode.connect(this.ambientGain);
+        this.ambientGain.connect(this.ctx.destination);
+        this.noiseNode.start();
+
+        this.updateWeatherAmbient(currentWeatherKey);
+    }
+
+    updateWeatherAmbient(weatherKey) {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        if (weatherKey === 'rain') {
+            this.filterNode.frequency.setTargetAtTime(1400, now, 0.5);
+            this.ambientGain.gain.setTargetAtTime(0.18, now, 0.5);
+        } else if (weatherKey === 'storm') {
+            this.filterNode.frequency.setTargetAtTime(1900, now, 0.5);
+            this.ambientGain.gain.setTargetAtTime(0.28, now, 0.5);
+        } else if (weatherKey === 'snow') {
+            this.filterNode.frequency.setTargetAtTime(420, now, 0.5);
+            this.ambientGain.gain.setTargetAtTime(0.08, now, 0.5);
+        } else if (weatherKey === 'cloudy') {
+            this.filterNode.frequency.setTargetAtTime(520, now, 0.5);
+            this.ambientGain.gain.setTargetAtTime(0.06, now, 0.5);
+        } else {
+            this.filterNode.frequency.setTargetAtTime(350, now, 0.5);
+            this.ambientGain.gain.setTargetAtTime(0.03, now, 0.5);
+        }
+    }
+
+    playJump() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(310, now);
+        osc.frequency.exponentialRampToValueAtTime(660, now + 0.14);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    }
+
+    playScore() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        [587.33, 880].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+            gain.gain.setValueAtTime(0.12, now + idx * 0.06);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.06);
+            osc.stop(now + idx * 0.06 + 0.22);
+        });
+    }
+
+    playCarrot() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.045);
+            gain.gain.setValueAtTime(0.14, now + idx * 0.045);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.045 + 0.25);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.045);
+            osc.stop(now + idx * 0.045 + 0.25);
+        });
+    }
+
+    playThunder() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(92, now);
+        osc.frequency.exponentialRampToValueAtTime(26, now + 0.95);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 1.0);
+    }
+
+    playCrash() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(210, now);
+        osc.frequency.linearRampToValueAtTime(70, now + 0.35);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.36);
+    }
+
+    playAvatarTapFallback() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        [523.25, 783.99].forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + i * 0.055);
+            osc.frequency.exponentialRampToValueAtTime(freq * 1.18, now + i * 0.055 + 0.12);
+            gain.gain.setValueAtTime(0.14, now + i * 0.055);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.14);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + i * 0.055);
+            osc.stop(now + i * 0.055 + 0.14);
+        });
+    }
+
+    playCountdownTick(isFinalGo = false) {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isFinalGo ? 880 : 523.25, now);
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + (isFinalGo ? 0.35 : 0.22));
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + (isFinalGo ? 0.36 : 0.23));
+    }
+
+    playWindGust() {
+        if (!this.ctx || !this.enabled) return;
+        const now = this.ctx.currentTime;
+        const bufferSize = Math.floor(this.ctx.sampleRate * 1.8);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.35;
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.value = 3.2;
+        filter.frequency.setValueAtTime(280, now);
+        filter.frequency.exponentialRampToValueAtTime(920, now + 0.65);
+        filter.frequency.exponentialRampToValueAtTime(340, now + 1.75);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.24, now + 0.45);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.78);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(now);
+        noise.stop(now + 1.8);
+    }
+
+    toggle() {
+        this.enabled = !this.enabled;
+        if (this.ambientGain && this.ctx) {
+            if (!this.enabled) {
+                this.ambientGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.1);
+            } else {
+                this.updateWeatherAmbient(currentWeatherKey);
+            }
+        }
+        return this.enabled;
+    }
+}
+
+const sound = new SoundEngine();
+
+/**
+ * ============================================================================
+ * КОНФИГУРАЦИЯ 5 ОБЪЕМНЫХ 3D-ПОГОДНЫХ РЕЖИМОВ И 3 ВРЕМЕН СУТОК
+ * ============================================================================
+ */
+const WEATHER_CONFIGS = {
+    sunny: {
+        name: 'Солнечный день',
+        icon: '☀️',
+        skyTop: '#2563eb',
+        skyHorizon: '#bae6fd',
+        skyBottom: '#fef3c7',
+        fogColor: 0xc8e6ff,
+        fogDensity: 0.0075,
+        sunColor: 0xfffbeb,
+        sunIntensity: 1.35,
+        hemiSky: 0x93c5fd,
+        hemiGround: 0x4d7c0f,
+        hemiIntensity: 0.85,
+        turfColor: 0x3f8f29,
+        hillColor: 0x2e6f40,
+        cloudTint: 0xffffff,
+        cloudShadowTint: 0xcbd5e1,
+        cloudCount: 16,
+        windX: -0.05,
+        lensStyle: 'radial-gradient(circle at 82% 14%, rgba(254, 243, 199, 0.35), transparent 55%)'
+    },
+    cloudy: {
+        name: 'Пушистая облачность',
+        icon: '☁️',
+        skyTop: '#475569',
+        skyHorizon: '#94a3b8',
+        skyBottom: '#e2e8f0',
+        fogColor: 0x94a3b8,
+        fogDensity: 0.012,
+        sunColor: 0xe2e8f0,
+        sunIntensity: 0.75,
+        hemiSky: 0xcbd5e1,
+        hemiGround: 0x334155,
+        hemiIntensity: 0.8,
+        turfColor: 0x367527,
+        hillColor: 0x335c47,
+        cloudTint: 0xf8fafc,
+        cloudShadowTint: 0x64748b,
+        cloudCount: 28,
+        windX: -0.11,
+        lensStyle: 'radial-gradient(circle at 50% 50%, transparent 55%, rgba(148, 163, 184, 0.32) 100%)'
+    },
+    rain: {
+        name: 'Грибной ливень',
+        icon: '🌧️',
+        skyTop: '#1e293b',
+        skyHorizon: '#475569',
+        skyBottom: '#64748b',
+        fogColor: 0x3b4c63,
+        fogDensity: 0.016,
+        sunColor: 0x94a3b8,
+        sunIntensity: 0.52,
+        hemiSky: 0x64748b,
+        hemiGround: 0x1e293b,
+        hemiIntensity: 0.7,
+        turfColor: 0x265c28,
+        hillColor: 0x1e3f32,
+        cloudTint: 0xcbd5e1,
+        cloudShadowTint: 0x334155,
+        cloudCount: 26,
+        windX: -0.18,
+        lensStyle: 'radial-gradient(circle at 50% 50%, transparent 50%, rgba(71, 85, 105, 0.42) 100%)'
+    },
+    storm: {
+        name: 'Грозовой фронт',
+        icon: '⛈️',
+        skyTop: '#0f172a',
+        skyHorizon: '#1e293b',
+        skyBottom: '#334155',
+        fogColor: 0x1a2436,
+        fogDensity: 0.019,
+        sunColor: 0x64748b,
+        sunIntensity: 0.38,
+        hemiSky: 0x475569,
+        hemiGround: 0x0f172a,
+        hemiIntensity: 0.55,
+        turfColor: 0x1d4422,
+        hillColor: 0x152c24,
+        cloudTint: 0x94a3b8,
+        cloudShadowTint: 0x1e293b,
+        cloudCount: 30,
+        windX: -0.26,
+        lensStyle: 'radial-gradient(circle at 50% 50%, transparent 45%, rgba(15, 23, 42, 0.58) 100%)'
+    },
+    snow: {
+        name: 'Снежная сказка',
+        icon: '❄️',
+        skyTop: '#1e3a5f',
+        skyHorizon: '#7dd3fc',
+        skyBottom: '#f0f9ff',
+        fogColor: 0xdbeafe,
+        fogDensity: 0.013,
+        sunColor: 0xffffff,
+        sunIntensity: 0.95,
+        hemiSky: 0xe0f2fe,
+        hemiGround: 0x94a3b8,
+        hemiIntensity: 0.9,
+        turfColor: 0xf1f5f9,
+        hillColor: 0xcbd5e1,
+        cloudTint: 0xffffff,
+        cloudShadowTint: 0x94a3b8,
+        cloudCount: 22,
+        windX: -0.09,
+        lensStyle: 'radial-gradient(circle at 50% 50%, transparent 50%, rgba(224, 242, 254, 0.48) 100%)'
+    }
+};
+
+const WEATHER_KEYS = Object.keys(WEATHER_CONFIGS);
+let selectedWeatherPreference = 'random';
+let currentWeatherKey = 'sunny';
+
+const TIME_OF_DAY_CONFIGS = {
+    day: {
+        name: 'День',
+        icon: '☀️',
+        exposure: 1.06
+    },
+    sunset: {
+        name: 'Закат',
+        icon: '🌅',
+        skyTop: '#311042',
+        skyHorizon: '#f97316',
+        skyBottom: '#fde047',
+        fogColor: 0xfb923c,
+        sunColor: 0xffedd5,
+        sunIntensityMul: 0.92,
+        hemiSky: 0xfda4af,
+        hemiGround: 0x451a03,
+        hemiIntensityMul: 0.82,
+        cloudTint: 0xfed7aa,
+        cloudShadowTint: 0x7c2d12,
+        turfTint: 0x3b7a28,
+        hillTint: 0x295238,
+        exposure: 0.96
+    },
+    night: {
+        name: 'Ночь',
+        icon: '🌙',
+        skyTop: '#030712',
+        skyHorizon: '#0f172a',
+        skyBottom: '#1e293b',
+        fogColor: 0x0b1324,
+        sunColor: 0x93c5fd,
+        sunIntensityMul: 0.28,
+        hemiSky: 0x1e3a8a,
+        hemiGround: 0x090d16,
+        hemiIntensityMul: 0.42,
+        cloudTint: 0x475569,
+        cloudShadowTint: 0x0f172a,
+        turfTint: 0x16381c,
+        hillTint: 0x0f241d,
+        exposure: 0.78
+    }
+};
+
+const TIME_KEYS = ['day', 'sunset', 'night'];
+let selectedTimePreference = 'random';
+let currentTimeKey = 'day';
+
+const TIME_CYCLE_INTERVAL_MS = 10000;
+let lastTimeCycleTimestamp = 0;
+let torchEquipProgress = 0;
+let isRareBlueFlame = false;
+
+let gameState = 'MENU';
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('doto_best_score') || '0', 10);
+let totalCarrots = parseInt(localStorage.getItem('doto_total_carrots') || '0', 10);
+
+document.getElementById('menuBestScore').textContent = bestScore;
+document.getElementById('menuTotalCarrots').textContent = '🥕 ' + totalCarrots;
+
+/**
+ * ============================================================================
+ * ИНИЦИАЛИЗАЦИЯ 3D-МИРА THREE.JS
+ * ============================================================================
+ */
+const renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: true,
+    powerPreference: 'high-performance'
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xc8e6ff, 0.008);
+
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 260);
+camera.position.set(-2.5, 1.2, 21.5);
+
+let pointerNormX = 0;
+let pointerNormY = 0;
+window.addEventListener('pointermove', (e) => {
+    pointerNormX = (e.clientX / window.innerWidth - 0.5) * 2;
+    pointerNormY = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x4d7c0f, 0.85);
+hemiLight.position.set(0, 40, 0);
+scene.add(hemiLight);
+
+const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.35);
+sunLight.position.set(16, 28, 18);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 2;
+sunLight.shadow.camera.far = 85;
+const d = 24;
+sunLight.shadow.camera.left = -d;
+sunLight.shadow.camera.right = d;
+sunLight.shadow.camera.top = d;
+sunLight.shadow.camera.bottom = -d;
+sunLight.shadow.bias = -0.0008;
+scene.add(sunLight);
+
+const lightningLight = new THREE.PointLight(0xdbeafe, 0, 140);
+lightningLight.position.set(0, 22, -18);
+scene.add(lightningLight);
+
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = 64;
+skyCanvas.height = 512;
+const skyCtx = skyCanvas.getContext('2d');
+const skyTexture = new THREE.CanvasTexture(skyCanvas);
+
+const skyDomeGeo = new THREE.SphereGeometry(180, 32, 24);
+const skyDomeMat = new THREE.MeshBasicMaterial({
+    map: skyTexture,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false
+});
+const skyDome = new THREE.Mesh(skyDomeGeo, skyDomeMat);
+scene.add(skyDome);
+
+function updateSkyDomeGradient(cfg) {
+    const grad = skyCtx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, cfg.skyTop);
+    grad.addColorStop(0.52, cfg.skyHorizon);
+    grad.addColorStop(1, cfg.skyBottom);
+    skyCtx.fillStyle = grad;
+    skyCtx.fillRect(0, 0, 64, 512);
+    skyTexture.needsUpdate = true;
+}
+
+function createFluffyCloudPuffTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 256;
+    const g = c.getContext('2d');
+
+    const subPuffs = [
+        { x: 128, y: 128, r: 108, a: 0.65 },
+        { x: 95,  y: 112, r: 78,  a: 0.55 },
+        { x: 162, y: 116, r: 76,  a: 0.55 },
+        { x: 118, y: 88,  r: 72,  a: 0.60 },
+        { x: 142, y: 148, r: 74,  a: 0.45 },
+        { x: 88,  y: 145, r: 68,  a: 0.45 }
+    ];
+
+    subPuffs.forEach(p => {
+        const rad = g.createRadialGradient(p.x, p.y - p.r * 0.18, p.r * 0.08, p.x, p.y, p.r);
+        rad.addColorStop(0, `rgba(255, 255, 255, ${p.a})`);
+        rad.addColorStop(0.5, `rgba(248, 250, 252, ${p.a * 0.65})`);
+        rad.addColorStop(0.82, `rgba(226, 232, 240, ${p.a * 0.22})`);
+        rad.addColorStop(1, 'rgba(226, 232, 240, 0)');
+        g.fillStyle = rad;
+        g.beginPath();
+        g.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        g.fill();
+    });
+
+    return new THREE.CanvasTexture(c);
+}
+
+function createSoftBokehTexture() {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext('2d');
+    const rad = g.createRadialGradient(64, 64, 4, 64, 64, 60);
+    rad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    rad.addColorStop(0.55, 'rgba(255, 255, 255, 0.65)');
+    rad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    g.fillStyle = rad;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+}
+
+function createRainStreakTexture() {
+    const c = document.createElement('canvas');
+    c.width = 32;
+    c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(16, 0, 16, 128);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    grad.addColorStop(0.5, 'rgba(224, 242, 254, 0.85)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    g.fillStyle = grad;
+    g.fillRect(11, 0, 10, 128);
+    return new THREE.CanvasTexture(c);
+}
+
+const cloudPuffTexture = createFluffyCloudPuffTexture();
+const softBokehTexture = createSoftBokehTexture();
+const rainStreakTexture = createRainStreakTexture();
+
+const GROUND_Y = -6.8;
+const CEILING_Y = 9.5;
+
+const trackMat = new THREE.MeshStandardMaterial({
+    color: 0x3f8f29,
+    roughness: 0.88,
+    metalness: 0.04
+});
+const trackMesh = new THREE.Mesh(new THREE.BoxGeometry(160, 4, 26), trackMat);
+trackMesh.position.set(0, GROUND_Y - 2, -2);
+trackMesh.receiveShadow = true;
+scene.add(trackMesh);
+
+const dirtMat = new THREE.MeshStandardMaterial({
+    color: 0xb48a64,
+    roughness: 0.92
+});
+const dirtMesh = new THREE.Mesh(new THREE.BoxGeometry(160, 4.05, 3.8), dirtMat);
+dirtMesh.position.set(0, GROUND_Y - 2, 5.2);
+dirtMesh.receiveShadow = true;
+scene.add(dirtMesh);
+
+const sceneryGroup = new THREE.Group();
+scene.add(sceneryGroup);
+
+const fenceWoodMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.55 });
+const hillMat = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.92, flatShading: true });
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+const foliageMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.8, flatShading: true });
+
+const fencePosts = [];
+const bgHills = [];
+const bgTrees = [];
+
+[-3.6, 3.6].forEach(zPos => {
+    const railTop = new THREE.Mesh(new THREE.BoxGeometry(140, 0.14, 0.14), fenceWoodMat);
+    railTop.position.set(0, GROUND_Y + 0.85, zPos);
+    railTop.castShadow = true;
+    railTop.receiveShadow = true;
+    sceneryGroup.add(railTop);
+
+    const railMid = new THREE.Mesh(new THREE.BoxGeometry(140, 0.12, 0.14), fenceWoodMat);
+    railMid.position.set(0, GROUND_Y + 0.45, zPos);
+    sceneryGroup.add(railMid);
+});
+
+for (let i = 0; i < 36; i++) {
+    const xPos = -45 + i * 2.6;
+    [-3.6, 3.6].forEach(zPos => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.05, 0.18), fenceWoodMat);
+        post.position.set(xPos, GROUND_Y + 0.52, zPos);
+        post.castShadow = true;
+        sceneryGroup.add(post);
+        fencePosts.push(post);
+    });
+}
+
+for (let i = 0; i < 18; i++) {
+    const radius = 9 + Math.random() * 14;
+    const hill = new THREE.Mesh(new THREE.ConeGeometry(radius, radius * 1.15, 7), hillMat);
+    hill.position.set(-70 + i * 9.5, GROUND_Y + radius * 0.4 - 2, -16 - Math.random() * 28);
+    hill.rotation.y = Math.random() * Math.PI;
+    hill.receiveShadow = true;
+    sceneryGroup.add(hill);
+    bgHills.push(hill);
+}
+
+for (let i = 0; i < 24; i++) {
+    const treeGroup = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 1.4, 6), trunkMat);
+    trunk.position.y = 0.7;
+    treeGroup.add(trunk);
+
+    const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 1), foliageMat);
+    crown.position.y = 1.9;
+    crown.scale.set(1, 1.25, 1);
+    crown.castShadow = true;
+    treeGroup.add(crown);
+
+    treeGroup.position.set(-55 + i * 4.8, GROUND_Y, -5.8 - Math.random() * 8);
+    const sc = 0.75 + Math.random() * 0.65;
+    treeGroup.scale.set(sc, sc, sc);
+    sceneryGroup.add(treeGroup);
+    bgTrees.push(treeGroup);
+}
+
+const sunGroup = new THREE.Group();
+sunGroup.position.set(22, 16, -42);
+scene.add(sunGroup);
+
+const sunSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(4.2, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfffbeb, fog: false })
+);
+sunGroup.add(sunSphere);
+
+const sunHaloSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+        map: softBokehTexture,
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    })
+);
+sunHaloSprite.scale.set(28, 28, 1);
+sunGroup.add(sunHaloSprite);
+
+const godRaysGroup = new THREE.Group();
+sunGroup.add(godRaysGroup);
+for (let i = 0; i < 5; i++) {
+    const rayGeo = new THREE.ConeGeometry(6 + i * 1.5, 48, 16, 1, true);
+    const rayMat = new THREE.MeshBasicMaterial({
+        color: 0xfef9c3,
+        transparent: true,
+        opacity: 0.045,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    const rayCone = new THREE.Mesh(rayGeo, rayMat);
+    rayCone.position.set(-8 - i * 2, -18, 8);
+    rayCone.rotation.z = 0.42 + i * 0.04;
+    godRaysGroup.add(rayCone);
+}
+
+const nightSkyGroup = new THREE.Group();
+scene.add(nightSkyGroup);
+
+const moonMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(3.4, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xf8fafc, fog: false })
+);
+moonMesh.position.set(20, 17, -44);
+nightSkyGroup.add(moonMesh);
+
+const moonGlow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+        map: softBokehTexture,
+        color: 0x93c5fd,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    })
+);
+moonGlow.scale.set(22, 22, 1);
+moonMesh.add(moonGlow);
+
+const starsGeo = new THREE.BufferGeometry();
+const starPositions = [];
+for (let i = 0; i < 220; i++) {
+    const sx = (Math.random() - 0.5) * 160;
+    const sy = 2 + Math.random() * 55;
+    const sz = -55 - Math.random() * 40;
+    starPositions.push(sx, sy, sz);
+}
+starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+const starsMat = new THREE.PointsMaterial({
+    color: 0xf8fafc,
+    size: 0.55,
+    transparent: true,
+    opacity: 0.85,
+    fog: false
+});
+const starsPoints = new THREE.Points(starsGeo, starsMat);
+nightSkyGroup.add(starsPoints);
+nightSkyGroup.visible = false;
+
+const cloudsGroup = new THREE.Group();
+scene.add(cloudsGroup);
+let volumetricClouds = [];
+
+function buildFluffy3DClouds(cfg) {
+    while (cloudsGroup.children.length > 0) {
+        cloudsGroup.remove(cloudsGroup.children[0]);
+    }
+    volumetricClouds = [];
+
+    for (let i = 0; i < cfg.cloudCount; i++) {
+        const cloudCluster = new THREE.Group();
+
+        const zDepth = -52 + Math.random() * 60;
+        const yHeight = 4.2 + Math.random() * 11.5;
+        const xPos = (Math.random() - 0.5) * 110;
+
+        cloudCluster.position.set(xPos, yHeight, zDepth);
+
+        const puffCount = 8 + Math.floor(Math.random() * 7);
+        const clusterScale = 0.85 + Math.random() * 0.9;
+
+        for (let p = 0; p < puffCount; p++) {
+            const isBottomShadow = p < puffCount * 0.38;
+            const puffMat = new THREE.SpriteMaterial({
+                map: cloudPuffTexture,
+                color: isBottomShadow ? cfg.cloudShadowTint : cfg.cloudTint,
+                transparent: true,
+                opacity: zDepth > 2 ? 0.38 : (isBottomShadow ? 0.78 : 0.92),
+                depthWrite: false
+            });
+
+            const puffSprite = new THREE.Sprite(puffMat);
+            const px = (Math.random() - 0.5) * 4.6 * clusterScale;
+            const py = (isBottomShadow ? -0.55 : 0.45) * clusterScale + (Math.random() - 0.5) * 1.1;
+            const pz = (Math.random() - 0.5) * 2.4 * clusterScale;
+            puffSprite.position.set(px, py, pz);
+
+            const s = (2.8 + Math.random() * 2.6) * clusterScale;
+            puffSprite.scale.set(s * 1.25, s, 1);
+            cloudCluster.add(puffSprite);
+        }
+
+        cloudsGroup.add(cloudCluster);
+        volumetricClouds.push({
+            mesh: cloudCluster,
+            speed: (0.018 + Math.random() * 0.035) * (1 + (zDepth + 55) * 0.015),
+            bobSeed: Math.random() * Math.PI * 2,
+            baseY: yHeight
+        });
+    }
+}
+
+doto3DTexture = new THREE.CanvasTexture(avatarCanvas);
+doto3DTexture.anisotropy = 4;
+update3DAvatarTexture();
+
+const dotoGroup = new THREE.Group();
+scene.add(dotoGroup);
+
+const sphereFaceMat = new THREE.MeshStandardMaterial({
+    map: doto3DTexture,
+    roughness: 0.32,
+    metalness: 0.04
+});
+
+const rimMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    roughness: 0.32,
+    metalness: 0.75
+});
+
+const bodySphereGeo = new THREE.SphereGeometry(1.18, 64, 64);
+(function applyBlenderSphericalUV(geo) {
+    const posAttr = geo.attributes.position;
+    const uvAttr = geo.attributes.uv;
+    const vNorm = new THREE.Vector3();
+    for (let i = 0; i < posAttr.count; i++) {
+        vNorm.fromBufferAttribute(posAttr, i).normalize();
+        const u = 0.5 + Math.atan2(vNorm.x, Math.abs(vNorm.z) + 0.0001) / Math.PI;
+        const v = 0.5 + Math.asin(Math.max(-1, Math.min(1, vNorm.y))) / Math.PI;
+        uvAttr.setXY(i, u, v);
+    }
+    uvAttr.needsUpdate = true;
+})(bodySphereGeo);
+
+const bodySphere = new THREE.Mesh(bodySphereGeo, sphereFaceMat);
+bodySphere.castShadow = true;
+bodySphere.receiveShadow = true;
+dotoGroup.add(bodySphere);
+
+const earOuterMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+const earInnerMat = new THREE.MeshStandardMaterial({ color: 0xfda4af, roughness: 0.7 });
+
+function create3DEar(isLeft) {
+    const earPivot = new THREE.Group();
+    const earCone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.78, 14), earOuterMat);
+    earCone.position.y = 0.35;
+    earCone.scale.set(1, 1, 0.55);
+    earCone.castShadow = true;
+    earPivot.add(earCone);
+
+    const innerCone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.52, 12), earInnerMat);
+    innerCone.position.set(0, 0.32, 0.08);
+    innerCone.scale.set(1, 1, 0.4);
+    earPivot.add(innerCone);
+
+    earPivot.position.set(isLeft ? -0.58 : 0.58, 1.02, 0.12);
+    earPivot.rotation.z = isLeft ? 0.42 : -0.42;
+    return earPivot;
+}
+
+const leftEar3D = create3DEar(true);
+const rightEar3D = create3DEar(false);
+dotoGroup.add(leftEar3D);
+dotoGroup.add(rightEar3D);
+
+const bowMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 });
+const bowCenter = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), bowMat);
+bowCenter.position.set(-1.08, 0.42, 0.38);
+dotoGroup.add(bowCenter);
+
+const torchHolderGroup = new THREE.Group();
+torchHolderGroup.position.set(0.95, -0.25, 0.78);
+torchHolderGroup.rotation.z = -0.28;
+torchHolderGroup.rotation.x = 0.15;
+torchHolderGroup.visible = false;
+dotoGroup.add(torchHolderGroup);
+
+const handMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.24, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xffe4e6, roughness: 0.5 })
+);
+handMesh.position.set(0, 0, 0);
+handMesh.castShadow = true;
+torchHolderGroup.add(handMesh);
+
+const torchWoodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.85 });
+const torchShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.06, 1.15, 12), torchWoodMat);
+torchShaft.position.set(0, 0.38, 0);
+torchShaft.castShadow = true;
+torchHolderGroup.add(torchShaft);
+
+const torchCupMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.35, metalness: 0.8 });
+const torchCup = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.1, 0.26, 14), torchCupMat);
+torchCup.position.set(0, 0.92, 0);
+torchCup.castShadow = true;
+torchHolderGroup.add(torchCup);
+
+const flameCoreMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+const flameCoreMesh = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 12), flameCoreMat);
+flameCoreMesh.position.set(0, 1.22, 0);
+torchHolderGroup.add(flameCoreMesh);
+
+const torchHaloSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+        map: softBokehTexture,
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.82,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    })
+);
+torchHaloSprite.scale.set(2.8, 2.8, 1);
+torchHaloSprite.position.set(0, 1.28, 0);
+torchHolderGroup.add(torchHaloSprite);
+
+const torchPointLight = new THREE.PointLight(0xff7b00, 0, 24, 1.6);
+torchPointLight.position.set(0.15, 1.35, 0.25);
+torchPointLight.castShadow = true;
+torchPointLight.shadow.mapSize.width = 512;
+torchPointLight.shadow.mapSize.height = 512;
+torchPointLight.shadow.camera.near = 0.3;
+torchPointLight.shadow.camera.far = 22;
+torchPointLight.shadow.bias = -0.002;
+torchHolderGroup.add(torchPointLight);
+
+const torchParticlesGroup = new THREE.Group();
+scene.add(torchParticlesGroup);
+const torchFireParticles = [];
+const torchSmokeParticles = [];
+
+const NORMAL_FIRE_COLORS = [0xfef9c3, 0xfacc15, 0xf97316, 0xea580c, 0xef4444, 0xdc2626];
+const RARE_BLUE_FIRE_COLORS = [0xe0f2fe, 0x38bdf8, 0x3b82f6, 0x6366f1, 0xa855f7, 0xd946ef];
+
+for (let i = 0; i < 34; i++) {
+    const pMat = new THREE.SpriteMaterial({
+        map: softBokehTexture,
+        color: NORMAL_FIRE_COLORS[i % NORMAL_FIRE_COLORS.length],
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    const sp = new THREE.Sprite(pMat);
+    sp.visible = false;
+    torchParticlesGroup.add(sp);
+    torchFireParticles.push({
+        sprite: sp,
+        life: Math.random(),
+        maxLife: 0.45 + Math.random() * 0.45,
+        vx: (Math.random() - 0.5) * 0.03,
+        vy: 0.055 + Math.random() * 0.055,
+        vz: (Math.random() - 0.5) * 0.03,
+        size: 0.35 + Math.random() * 0.42,
+        colorIdx: i % NORMAL_FIRE_COLORS.length
+    });
+}
+
+for (let i = 0; i < 10; i++) {
+    const sMat = new THREE.SpriteMaterial({
+        map: softBokehTexture,
+        color: 0x111827,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false
+    });
+    const sp = new THREE.Sprite(sMat);
+    sp.visible = false;
+    torchParticlesGroup.add(sp);
+    torchSmokeParticles.push({
+        sprite: sp,
+        life: Math.random(),
+        maxLife: 0.8 + Math.random() * 0.5,
+        vx: -0.03 - Math.random() * 0.02,
+        vy: 0.045 + Math.random() * 0.03,
+        vz: (Math.random() - 0.5) * 0.02,
+        size: 0.32 + Math.random() * 0.28
+    });
+}
+
+const umbrellaGroup = new THREE.Group();
+umbrellaGroup.position.set(0.05, 1.38, 0.1);
+umbrellaGroup.rotation.z = -0.08;
+umbrellaGroup.visible = false;
+dotoGroup.add(umbrellaGroup);
+
+const umbrellaShaftMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3, metalness: 0.8 });
+const umbrellaShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.55, 10), umbrellaShaftMat);
+umbrellaShaft.position.set(0, -0.35, 0);
+umbrellaGroup.add(umbrellaShaft);
+
+const umbrellaHandle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.14, 0.045, 10, 18, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4 })
+);
+umbrellaHandle.position.set(-0.14, -1.12, 0);
+umbrellaHandle.rotation.z = Math.PI;
+umbrellaGroup.add(umbrellaHandle);
+
+const canopyMat = new THREE.MeshStandardMaterial({
+    color: 0x2563eb,
+    roughness: 0.22,
+    metalness: 0.1,
+    side: THREE.DoubleSide
+});
+const canopyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(1.68, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.44),
+    canopyMat
+);
+canopyDome.position.set(0, -0.55, 0);
+canopyDome.scale.set(1, 0.72, 1);
+canopyDome.castShadow = true;
+canopyDome.receiveShadow = true;
+umbrellaGroup.add(canopyDome);
+
+const umbrellaTip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 12), rimMat);
+umbrellaTip.position.set(0, 0.76, 0);
+umbrellaGroup.add(umbrellaTip);
+
+const umbrellaRimRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.64, 0.035, 8, 24),
+    new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.35 })
+);
+umbrellaRimRing.rotation.x = Math.PI / 2;
+umbrellaRimRing.position.set(0, -0.02, 0);
+umbrellaGroup.add(umbrellaRimRing);
+
+const umbrellaDripsGroup = new THREE.Group();
+scene.add(umbrellaDripsGroup);
+const umbrellaDripParticles = [];
+
+for (let i = 0; i < 42; i++) {
+    const dMat = new THREE.SpriteMaterial({
+        map: rainStreakTexture,
+        color: 0xe0f2fe,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false
+    });
+    const sp = new THREE.Sprite(dMat);
+    sp.scale.set(0.07, 0.36, 1);
+    sp.visible = false;
+    umbrellaDripsGroup.add(sp);
+
+    umbrellaDripParticles.push({
+        sprite: sp,
+        angle: (i / 42) * Math.PI * 2 + Math.random() * 0.2,
+        phase: Math.random(),
+        speed: 0.016 + Math.random() * 0.014,
+        dropX: 0,
+        dropY: 0,
+        dropZ: 0,
+        dropVy: 0
+    });
+}
+
+const shieldRing3D = new THREE.Mesh(
+    new THREE.TorusGeometry(1.62, 0.06, 12, 40),
+    new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        roughness: 0.2,
+        metalness: 0.85,
+        transparent: true,
+        opacity: 0.9
+    })
+);
+shieldRing3D.visible = false;
+dotoGroup.add(shieldRing3D);
+
+const trailGroup = new THREE.Group();
+scene.add(trailGroup);
+const trailMeshes = [];
+const trailMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.55
+});
+for (let i = 0; i < 14; i++) {
+    const tm = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), trailMat.clone());
+    tm.visible = false;
+    trailGroup.add(tm);
+    trailMeshes.push({ mesh: tm, x: 0, y: 0, z: 0, scale: 0.01 });
+}
+
+/**
+ * 3D ПОРЫВЫ ПОПУТНОГО ВЕТРА (Появляются со счета 50+, ускоряют Мейшо Дото сзади)
+ */
+const windGust3DGroup = new THREE.Group();
+scene.add(windGust3DGroup);
+const windStreaks3D = [];
+
+const windRibbonMat = new THREE.MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+});
+
+for (let i = 0; i < 28; i++) {
+    const len = 3.2 + Math.random() * 4.5;
+    const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.01, len, 8),
+        windRibbonMat.clone()
+    );
+    mesh.rotation.z = -Math.PI / 2;
+    mesh.position.set(
+        -26 + Math.random() * 52,
+        GROUND_Y + 1.5 + Math.random() * (CEILING_Y - GROUND_Y - 2),
+        -8 + Math.random() * 14
+    );
+    mesh.visible = false;
+    windGust3DGroup.add(mesh);
+    windStreaks3D.push({
+        mesh: mesh,
+        speed: 0.55 + Math.random() * 0.45,
+        baseY: mesh.position.y,
+        wavePhase: Math.random() * Math.PI * 2
+    });
+}
+
+function triggerTailwindGust() {
+    windGustActiveTimer = 210; // ~3.5 секунды мощного попутного ветра
+    windHudBadge.classList.remove('hidden');
+    sound.playWindGust();
+}
+
+// Физические параметры Мейшо Дото в 3D-координатах
+const doto = {
+    x: -4.2,
+    y: 1.0,
+    z: 0,
+    baseRadius: 1.18,
+    radius: 1.18,
+    vy: 0,
+    gravity: -0.0175,
+    jumpStrength: 0.34,
+    pitch: 0,
+    yawOffset: 0,
+    scaleX: 1,
+    scaleY: 1,
+    earWiggle: 0,
+    shieldTimer: 0
+};
+
+/**
+ * ============================================================================
+ * ОБЪЕМНАЯ 3D-ПОГОДА (ЧАСТИЦЫ ТОЛЬКО В ДОЖДЬ, ГРОЗУ И СНЕГ)
+ * ============================================================================
+ */
+const weatherGroup = new THREE.Group();
+scene.add(weatherGroup);
+let weather3DParticles = [];
+
+let lightningMesh3D = null;
+let lightningTimer = 150;
+
+function initVolumetric3DWeather(cfg) {
+    while (weatherGroup.children.length > 0) {
+        weatherGroup.remove(weatherGroup.children[0]);
+    }
+    weather3DParticles = [];
+
+    const isRainOrStorm = currentWeatherKey === 'rain' || currentWeatherKey === 'storm';
+    const isSnow = currentWeatherKey === 'snow';
+    const count = isRainOrStorm ? 260 : (isSnow ? 210 : 0);
+
+    for (let i = 0; i < count; i++) {
+        const z = -26 + Math.random() * 41.5;
+        const x = (Math.random() - 0.5) * 58;
+        const y = GROUND_Y + Math.random() * 24;
+
+        let spriteMat;
+        if (isRainOrStorm) {
+            spriteMat = new THREE.SpriteMaterial({
+                map: rainStreakTexture,
+                color: currentWeatherKey === 'storm' ? 0xcbd5e1 : 0xe0f2fe,
+                transparent: true,
+                opacity: z > 10 ? 0.35 : 0.68,
+                depthWrite: false
+            });
+        } else {
+            spriteMat = new THREE.SpriteMaterial({
+                map: softBokehTexture,
+                color: 0xffffff,
+                transparent: true,
+                opacity: z > 11 ? 0.45 : 0.88,
+                depthWrite: false
+            });
+        }
+
+        const sp = new THREE.Sprite(spriteMat);
+        sp.position.set(x, y, z);
+
+        if (isRainOrStorm) {
+            sp.scale.set(0.12, 1.35, 1);
+            sp.material.rotation = -0.22;
+        } else {
+            const baseSize = 0.28 + Math.random() * 0.32;
+            sp.scale.set(baseSize, baseSize, 1);
+        }
+
+        weatherGroup.add(sp);
+        weather3DParticles.push({
+            sprite: sp,
+            vx: cfg.windX * (0.8 + Math.random() * 0.5),
+            vy: isRainOrStorm ? -(0.52 + Math.random() * 0.28) : -(0.045 + Math.random() * 0.055),
+            vz: (Math.random() - 0.5) * 0.02,
+            swirlPhase: Math.random() * Math.PI * 2,
+            swirlSpeed: 0.02 + Math.random() * 0.03
+        });
+    }
+}
+
+function trigger3DLightning() {
+    if (lightningMesh3D) {
+        scene.remove(lightningMesh3D);
+        lightningMesh3D = null;
+    }
+
+    const points = [];
+    let cx = (Math.random() - 0.5) * 32;
+    let cy = 22;
+    const cz = -22 - Math.random() * 15;
+    points.push(new THREE.Vector3(cx, cy, cz));
+
+    while (cy > GROUND_Y) {
+        cx += (Math.random() - 0.5) * 3.8;
+        cy -= 1.8 + Math.random() * 2.2;
+        points.push(new THREE.Vector3(cx, cy, cz));
+    }
+
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0xf8fafc, linewidth: 3 });
+    lightningMesh3D = new THREE.Line(geo, mat);
+    scene.add(lightningMesh3D);
+
+    lightningLight.position.set(cx, 18, cz + 6);
+    lightningLight.intensity = 4.2;
+    sound.playThunder();
+}
+
+const obstaclesGroup = new THREE.Group();
+scene.add(obstaclesGroup);
+let obstacles3D = [];
+let carrots3D = [];
+let burstParticles3D = [];
+
+const pillarStoneMat = new THREE.MeshStandardMaterial({
+    color: 0xf1f5f9,
+    roughness: 0.45,
+    metalness: 0.08
+});
+const pillarCapMat = new THREE.MeshStandardMaterial({
+    color: 0x15803d,
+    roughness: 0.4,
+    metalness: 0.15
+});
+const pillarGoldMat = new THREE.MeshStandardMaterial({
+    color: 0xd97706,
+    roughness: 0.3,
+    metalness: 0.72
+});
+
+function createPillarSection(heightLen, isTop) {
+    const group = new THREE.Group();
+
+    const colGeo = new THREE.CylinderGeometry(0.92, 0.92, heightLen, 20);
+    const colMesh = new THREE.Mesh(colGeo, pillarStoneMat);
+    colMesh.position.y = isTop ? (heightLen / 2) : (-heightLen / 2);
+    colMesh.castShadow = true;
+    colMesh.receiveShadow = true;
+    group.add(colMesh);
+
+    const capGeo = new THREE.BoxGeometry(2.35, 0.75, 2.35);
+    const capMesh = new THREE.Mesh(capGeo, pillarCapMat);
+    capMesh.position.y = isTop ? 0.37 : -0.37;
+    capMesh.castShadow = true;
+    capMesh.receiveShadow = true;
+    group.add(capMesh);
+
+    const trimGeo = new THREE.BoxGeometry(2.5, 0.22, 2.5);
+    const trimMesh = new THREE.Mesh(trimGeo, pillarGoldMat);
+    trimMesh.position.y = isTop ? 0.76 : -0.76;
+    group.add(trimMesh);
+
+    const shoeMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(0.28, 0.06, 8, 18, Math.PI * 1.35),
+        pillarGoldMat
+    );
+    shoeMesh.position.set(0, isTop ? 0.38 : -0.38, 1.22);
+    shoeMesh.rotation.z = isTop ? Math.PI * 0.82 : -Math.PI * 0.18;
+    group.add(shoeMesh);
+
+    return group;
+}
+
+const carrotBodyMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.35 });
+const carrotLeafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5 });
+
+function create3DCarrot() {
+    const group = new THREE.Group();
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.35, 14), carrotBodyMat);
+    cone.rotation.x = Math.PI;
+    cone.castShadow = true;
+    group.add(cone);
+
+    for (let i = 0; i < 3; i++) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.55, 8), carrotLeafMat);
+        leaf.position.y = 0.78;
+        leaf.rotation.z = (i - 1) * 0.45;
+        group.add(leaf);
+    }
+    return group;
+}
+
+function spawn3DObstacle() {
+    const diffCfg = DIFFICULTY_CONFIGS[currentDifficultyKey];
+    const baseGap = Math.max(4.1, 5.4 - Math.min(0.95, score * 0.018));
+    const gapSize = Math.max(2.6, Math.min(10.5, baseGap + diffCfg.gapBonus + godConfig.gapBonus));
+
+    const minCenterY = GROUND_Y + 2.5 + gapSize / 2;
+    const maxCenterY = CEILING_Y - 2.0 - gapSize / 2;
+    const gapCenterY = minCenterY + Math.random() * Math.max(0.2, (maxCenterY - minCenterY));
+
+    const topEdgeY = gapCenterY + gapSize / 2;
+    const bottomEdgeY = gapCenterY - gapSize / 2;
+
+    const spawnX = 24;
+    const gatePairGroup = new THREE.Group();
+    gatePairGroup.position.set(spawnX, 0, 0);
+
+    const topPillar = createPillarSection(18, true);
+    topPillar.position.y = topEdgeY;
+    gatePairGroup.add(topPillar);
+
+    const bottomPillar = createPillarSection(18, false);
+    bottomPillar.position.y = bottomEdgeY;
+    gatePairGroup.add(bottomPillar);
+
+    obstaclesGroup.add(gatePairGroup);
+
+    obstacles3D.push({
+        group: gatePairGroup,
+        x: spawnX,
+        halfWidth: 1.05,
+        topEdgeY: topEdgeY,
+        bottomEdgeY: bottomEdgeY,
+        passed: false
+    });
+
+    if (Math.random() < 0.65) {
+        const carrotMesh = create3DCarrot();
+        const cy = gapCenterY + (Math.random() - 0.5) * (gapSize * 0.35);
+        carrotMesh.position.set(spawnX, cy, 0);
+        obstaclesGroup.add(carrotMesh);
+        carrots3D.push({
+            mesh: carrotMesh,
+            x: spawnX,
+            baseY: cy,
+            bobPhase: Math.random() * Math.PI * 2,
+            collected: false
+        });
+    }
+}
+
+function spawn3DBurst(x, y, z, colorHex, count = 12) {
+    const mat = new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.3,
+        metalness: 0.4,
+        transparent: true,
+        opacity: 1
+    });
+    for (let i = 0; i < count; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.14 + Math.random() * 0.12, 8, 8), mat.clone());
+        m.position.set(x, y, z);
+        scene.add(m);
+        burstParticles3D.push({
+            mesh: m,
+            vx: (Math.random() - 0.5) * 0.28,
+            vy: (Math.random() - 0.5) * 0.28,
+            vz: (Math.random() - 0.5) * 0.28,
+            alpha: 1
+        });
+    }
+}
+
+function applyTorchPalette() {
+    const palette = isRareBlueFlame ? RARE_BLUE_FIRE_COLORS : NORMAL_FIRE_COLORS;
+    flameCoreMat.color.setHex(isRareBlueFlame ? 0xe0f2fe : 0xfef08a);
+    torchHaloSprite.material.color.setHex(isRareBlueFlame ? 0x6366f1 : 0xf97316);
+    torchPointLight.color.setHex(isRareBlueFlame ? 0x60a5fa : 0xff7b00);
+
+    torchFireParticles.forEach((fp, idx) => {
+        fp.sprite.material.color.setHex(palette[idx % palette.length]);
+    });
+}
+
+function applyTimeOfDayEnvironment(rebuildCloudsAndWeather = false) {
+    if (currentWeatherKey === 'storm') {
+        currentTimeKey = 'night';
+    }
+
+    const baseCfg = WEATHER_CONFIGS[currentWeatherKey];
+    const timeCfg = TIME_OF_DAY_CONFIGS[currentTimeKey];
+
+    const effectiveCfg = Object.assign({}, baseCfg);
+    if (currentTimeKey !== 'day') {
+        effectiveCfg.skyTop = timeCfg.skyTop;
+        effectiveCfg.skyHorizon = timeCfg.skyHorizon;
+        effectiveCfg.skyBottom = timeCfg.skyBottom;
+        effectiveCfg.fogColor = timeCfg.fogColor;
+        effectiveCfg.sunColor = timeCfg.sunColor;
+        effectiveCfg.sunIntensity = baseCfg.sunIntensity * timeCfg.sunIntensityMul;
+        effectiveCfg.hemiSky = timeCfg.hemiSky;
+        effectiveCfg.hemiGround = timeCfg.hemiGround;
+        effectiveCfg.hemiIntensity = baseCfg.hemiIntensity * timeCfg.hemiIntensityMul;
+        effectiveCfg.cloudTint = timeCfg.cloudTint;
+        effectiveCfg.cloudShadowTint = timeCfg.cloudShadowTint;
+        if (currentWeatherKey !== 'snow') {
+            effectiveCfg.turfColor = timeCfg.turfTint;
+            effectiveCfg.hillColor = timeCfg.hillTint;
+        }
+    }
+
+    renderer.toneMappingExposure = timeCfg.exposure;
+
+    hudWeatherIcon.textContent = baseCfg.icon;
+    hudCompactTimeIcon.textContent = timeCfg.icon;
+    hudWeatherName.textContent = `${baseCfg.name} (${timeCfg.name})`;
+
+    if (currentTimeKey === 'night') {
+        const flameText = isRareBlueFlame ? '🔮 Сине-фиолетовый факел!' : '🔥 Факел в руке';
+        hudTimeOfDayBadge.textContent = `${timeCfg.icon} ${timeCfg.name} • ${flameText}`;
+    } else {
+        hudTimeOfDayBadge.textContent = `${timeCfg.icon} ${timeCfg.name} • Цикл 10с`;
+    }
+
+    weatherLens.style.background = baseCfg.lensStyle;
+
+    const isRainy = currentWeatherKey === 'rain' || currentWeatherKey === 'storm';
+    umbrellaGroup.visible = isRainy;
+    if (!isRainy) {
+        umbrellaDripParticles.forEach(dp => { dp.sprite.visible = false; });
+    }
+
+    updateSkyDomeGradient(effectiveCfg);
+    scene.fog.color.setHex(effectiveCfg.fogColor);
+    scene.fog.density = effectiveCfg.fogDensity;
+
+    sunLight.color.setHex(effectiveCfg.sunColor);
+    sunLight.intensity = effectiveCfg.sunIntensity;
+    hemiLight.color.setHex(effectiveCfg.hemiSky);
+    hemiLight.groundColor.setHex(effectiveCfg.hemiGround);
+    hemiLight.intensity = effectiveCfg.hemiIntensity;
+
+    trackMat.color.setHex(effectiveCfg.turfColor);
+    hillMat.color.setHex(effectiveCfg.hillColor);
+    foliageMat.color.setHex(currentWeatherKey === 'snow' ? 0xe2e8f0 : (currentTimeKey === 'night' ? 0x1b4332 : 0x2d6a4f));
+
+    sunGroup.visible = (currentTimeKey === 'day' || currentTimeKey === 'sunset') && (currentWeatherKey === 'sunny' || currentWeatherKey === 'cloudy' || currentWeatherKey === 'snow');
+    if (currentTimeKey === 'sunset') {
+        sunGroup.position.set(24, 7.5, -44);
+        sunSphere.material.color.setHex(0xfdba74);
+        sunHaloSprite.material.color.setHex(0xf97316);
+    } else {
+        sunGroup.position.set(22, 16, -42);
+        sunSphere.material.color.setHex(0xfffbeb);
+        sunHaloSprite.material.color.setHex(0xfef08a);
+    }
+
+    nightSkyGroup.visible = currentTimeKey === 'night';
+    moonMesh.visible = currentWeatherKey !== 'storm';
+
+    if (rebuildCloudsAndWeather) {
+        buildFluffy3DClouds(effectiveCfg);
+        initVolumetric3DWeather(effectiveCfg);
+    } else {
+        volumetricClouds.forEach(c => {
+            const puffs = c.mesh.children;
+            for (let p = 0; p < puffs.length; p++) {
+                const isBottomShadow = p < puffs.length * 0.38;
+                puffs[p].material.color.setHex(isBottomShadow ? effectiveCfg.cloudShadowTint : effectiveCfg.cloudTint);
+            }
+        });
+    }
+}
+
+function advanceTimeOfDayCycle() {
+    if (currentWeatherKey === 'storm') {
+        currentTimeKey = 'night';
+        return;
+    }
+    const idx = TIME_KEYS.indexOf(currentTimeKey);
+    currentTimeKey = TIME_KEYS[(idx + 1) % TIME_KEYS.length];
+
+    if (currentTimeKey === 'night') {
+        isRareBlueFlame = godConfig.forceBlueFlame || (Math.random() < 0.22);
+        applyTorchPalette();
+    }
+    applyTimeOfDayEnvironment(false);
+}
+
+function pickAndApplyWeather(forceRandom = false) {
+    if (forceRandom || selectedWeatherPreference === 'random') {
+        const randomIndex = Math.floor(Math.random() * WEATHER_KEYS.length);
+        currentWeatherKey = WEATHER_KEYS[randomIndex];
+    } else {
+        currentWeatherKey = selectedWeatherPreference;
+    }
+
+    if (currentWeatherKey === 'storm') {
+        currentTimeKey = 'night';
+    } else if (forceRandom || selectedTimePreference === 'random') {
+        currentTimeKey = TIME_KEYS[Math.floor(Math.random() * TIME_KEYS.length)];
+    } else {
+        currentTimeKey = selectedTimePreference;
+    }
+
+    isRareBlueFlame = godConfig.forceBlueFlame || (Math.random() < 0.22);
+    applyTorchPalette();
+    applyTimeOfDayEnvironment(true);
+    sound.updateWeatherAmbient(currentWeatherKey);
+}
+
+/**
+ * ============================================================================
+ * УПРАВЛЕНИЕ СОСТОЯНИЕМ ИГРЫ, ПАУЗОЙ И ОТСЧЕТОМ 3-2-1
+ * ============================================================================
+ */
+function clearObstaclesAndCarrots() {
+    obstacles3D.forEach(o => obstaclesGroup.remove(o.group));
+    obstacles3D = [];
+    carrots3D.forEach(c => obstaclesGroup.remove(c.mesh));
+    carrots3D = [];
+}
+
+function resetGame() {
+    score = 0;
+    liveScoreEl.textContent = '0';
+    comboBadge.classList.add('hidden');
+    windHudBadge.classList.add('hidden');
+    windGustActiveTimer = 0;
+    windGustCooldown = 280;
+    windStreaks3D.forEach(ws => { ws.mesh.visible = false; });
+
+    doto.x = -4.2;
+    doto.y = 1.2;
+    doto.vy = 0;
+    doto.pitch = 0;
+    doto.scaleX = 1;
+    doto.scaleY = 1;
+    doto.radius = doto.baseRadius * godConfig.dotoScale;
+    doto.shieldTimer = 0;
+    shieldRing3D.visible = false;
+
+    clearObstaclesAndCarrots();
+}
+
+function startGame() {
+    sound.init();
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    countdownOverlay.classList.add('hidden');
+    countdownOverlay.classList.remove('flex');
+    pauseMenu.classList.add('menu-hidden');
+    godModeModal.classList.add('menu-hidden');
+
+    pickAndApplyWeather(false);
+    resetGame();
+    lastTimeCycleTimestamp = performance.now();
+    resumeSlowMoStartTime = 0;
+
+    gameState = 'PLAYING';
+    mainMenu.classList.add('menu-hidden');
+    gameOverMenu.classList.add('menu-hidden');
+    liveScoreContainer.classList.remove('opacity-0');
+    canvas.classList.remove('canvas-blurred');
+    canvas.classList.add('canvas-sharp');
+    dotoSphereDecal.classList.remove('decal-blurred');
+    dotoSphereDecal.classList.add('decal-sharp');
+
+    // Показываем кнопку паузы на время забега и плавно убираем кнопки меню (рандом, звук, +)
+    hudPauseBtn.classList.remove('hidden');
+    hudPauseBtn.classList.add('flex');
+    topRightControls.classList.add('controls-hidden');
+
+    // Сбрасываем прошлые таймеры и показываем подсказку (на 3с) и полную погоду (на 4с)
+    if (hintHideTimeout) clearTimeout(hintHideTimeout);
+    if (weatherCompactTimeout) clearTimeout(weatherCompactTimeout);
+
+    controlsHint.classList.remove('hint-hidden');
+    weatherPill.classList.remove('weather-compact');
+
+    hintHideTimeout = setTimeout(() => {
+        if (gameState === 'PLAYING') {
+            controlsHint.classList.add('hint-hidden');
+        }
+    }, 3000);
+
+    weatherCompactTimeout = setTimeout(() => {
+        if (gameState === 'PLAYING') {
+            weatherPill.classList.add('weather-compact');
+        }
+    }, 4000);
+
+    dotoJump();
+}
+
+function pauseGame() {
+    if (gameState !== 'PLAYING') return;
+    gameState = 'PAUSED';
+
+    document.getElementById('pauseCurrentScore').textContent = score;
+    document.getElementById('pauseCurrentDiff').textContent = DIFFICULTY_CONFIGS[currentDifficultyKey].name;
+
+    canvas.classList.remove('canvas-sharp');
+    canvas.classList.add('canvas-blurred');
+    dotoSphereDecal.classList.remove('decal-sharp');
+    dotoSphereDecal.classList.add('decal-blurred');
+
+    // В меню паузы возвращаем верхние кнопки (включая звук и Режим Бога +)
+    topRightControls.classList.remove('controls-hidden');
+    pauseMenu.classList.remove('menu-hidden');
+}
+
+function resumeFromPauseWithCountdown() {
+    if (gameState !== 'PAUSED') return;
+    sound.init();
+    pauseMenu.classList.add('menu-hidden');
+    godModeModal.classList.add('menu-hidden');
+    topRightControls.classList.add('controls-hidden');
+
+    canvas.classList.remove('canvas-blurred');
+    canvas.classList.add('canvas-sharp');
+    dotoSphereDecal.classList.remove('decal-blurred');
+    dotoSphereDecal.classList.add('decal-sharp');
+
+    gameState = 'COUNTDOWN';
+    let countVal = 3;
+
+    const showNumber = (n) => {
+        countdownOverlay.classList.remove('hidden');
+        countdownOverlay.classList.add('flex');
+        countdownNumberEl.textContent = n;
+        countdownNumberEl.classList.remove('countdown-number-anim');
+        void countdownNumberEl.offsetWidth; // перезапуск CSS-анимации
+        countdownNumberEl.classList.add('countdown-number-anim');
+        sound.playCountdownTick(false);
+    };
+
+    showNumber(countVal);
+
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        countVal--;
+        if (countVal > 0) {
+            showNumber(countVal);
+        } else {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+            countdownOverlay.classList.add('hidden');
+            countdownOverlay.classList.remove('flex');
+            sound.playCountdownTick(true);
+
+            // Запускаем игру в замедлении (Slow-Mo) с плавным разгоном за 2 секунды до исходной скорости
+            resumeSlowMoStartTime = performance.now();
+            lastTimeCycleTimestamp = performance.now();
+            gameState = 'PLAYING';
+        }
+    }, 1000);
+}
+
+function dotoJump() {
+    if (gameState !== 'PLAYING') return;
+    doto.vy = doto.jumpStrength * godConfig.jumpMult;
+    doto.scaleX = 1.22;
+    doto.scaleY = 0.82;
+    doto.earWiggle = 1.0;
+    sound.playJump();
+
+    spawn3DBurst(doto.x - 0.8, doto.y - 0.3, 0, 0xfef08a, 7);
+}
+
+function triggerGameOver() {
+    gameState = 'GAMEOVER';
+    sound.playCrash();
+    spawn3DBurst(doto.x, doto.y, 0, 0xf97316, 16);
+
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('doto_best_score', bestScore);
+    }
+
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalBestScore').textContent = bestScore;
+    document.getElementById('menuBestScore').textContent = bestScore;
+    document.getElementById('menuTotalCarrots').textContent = '🥕 ' + totalCarrots;
+
+    const cfg = WEATHER_CONFIGS[currentWeatherKey];
+    const timeCfg = TIME_OF_DAY_CONFIGS[currentTimeKey];
+    document.getElementById('gameOverWeatherText').textContent = `${cfg.icon} ${cfg.name} • ${timeCfg.icon} ${timeCfg.name}`;
+
+    const medalEl = document.getElementById('medalBadge');
+    const quoteEl = document.getElementById('dotoQuote');
+    if (score >= 25) {
+        medalEl.textContent = '👑';
+        quoteEl.textContent = '«Н-не может быть! Мы выиграли Гран-при GI без единого падения?!»';
+    } else if (score >= 12) {
+        medalEl.textContent = '🥇';
+        quoteEl.textContent = '«Ура! Я почти не спотыкалась! Спасибо за поддержку!»';
+    } else if (score >= 5) {
+        medalEl.textContent = '🥈';
+        quoteEl.textContent = '«Ой-ой, было близко! Давайте попробуем ещё разок!»';
+    } else {
+        medalEl.textContent = '🥕';
+        quoteEl.textContent = '«Уваа! Простите, я снова запуталась в собственных ногах!..»';
+    }
+
+    liveScoreContainer.classList.add('opacity-0');
+    hudPauseBtn.classList.add('hidden');
+    hudPauseBtn.classList.remove('flex');
+    windHudBadge.classList.add('hidden');
+    canvas.classList.remove('canvas-sharp');
+    canvas.classList.add('canvas-blurred');
+    dotoSphereDecal.classList.remove('decal-sharp');
+    dotoSphereDecal.classList.add('decal-blurred');
+    gameOverMenu.classList.remove('menu-hidden');
+
+    // Возвращаем кнопки звука и рандома, разворачиваем погоду и подсказку после финиша
+    if (hintHideTimeout) clearTimeout(hintHideTimeout);
+    if (weatherCompactTimeout) clearTimeout(weatherCompactTimeout);
+    topRightControls.classList.remove('controls-hidden');
+    weatherPill.classList.remove('weather-compact');
+    controlsHint.classList.remove('hint-hidden');
+}
+
+/**
+ * ============================================================================
+ * ГЛАВНЫЙ 3D-ЦИКЛ ОБНОВЛЕНИЯ И РЕНДЕРИНГА
+ * ============================================================================
+ */
+let spawnTimer = 0;
+const torchWorldPos = new THREE.Vector3();
+const umbrellaWorldPos = new THREE.Vector3();
+const sphereWorldCenter = new THREE.Vector3();
+const sphereScreenCenter = new THREE.Vector3();
+
+function syncHtmlSphereDecal() {
+    if (!useHtmlSphereDecal) return;
+
+    camera.updateMatrixWorld();
+    bodySphere.getWorldPosition(sphereWorldCenter);
+    sphereScreenCenter.copy(sphereWorldCenter).project(camera);
+
+    const distToCam = camera.position.distanceTo(sphereWorldCenter);
+    const vFovRad = (camera.fov * Math.PI) / 180;
+    const visibleHeightAtZ = 2 * Math.tan(vFovRad / 2) * distToCam;
+    const pixelRadius = (doto.radius / visibleHeightAtZ) * window.innerHeight;
+    const diameter = pixelRadius * 2;
+
+    const sx = (sphereScreenCenter.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (-sphereScreenCenter.y * 0.5 + 0.5) * window.innerHeight;
+
+    dotoSphereDecal.style.width = `${diameter}px`;
+    dotoSphereDecal.style.height = `${diameter}px`;
+    dotoSphereDecal.style.transform = `translate3d(${sx - pixelRadius}px, ${sy - pixelRadius}px, 0) rotate(${-doto.pitch}rad) scale(${doto.scaleX}, ${doto.scaleY})`;
+}
+
+function updateTorchAndUmbrellaEffects(now, worldSpeed) {
+    const shouldHoldTorch = currentTimeKey === 'night';
+    const targetEquip = shouldHoldTorch ? 1 : 0;
+    torchEquipProgress += (targetEquip - torchEquipProgress) * 0.085;
+
+    if (torchEquipProgress < 0.01 && !shouldHoldTorch) {
+        torchEquipProgress = 0;
+        torchHolderGroup.visible = false;
+        torchPointLight.intensity = 0;
+        torchFireParticles.forEach(fp => { fp.sprite.visible = false; });
+        torchSmokeParticles.forEach(sp => { sp.sprite.visible = false; });
+    } else {
+        torchHolderGroup.visible = true;
+
+        const easeOut = 1 - Math.pow(1 - torchEquipProgress, 3);
+        torchHolderGroup.position.set(
+            0.15 + easeOut * 0.80,
+            -0.95 + easeOut * 0.70,
+            -0.35 + easeOut * 1.13
+        );
+        torchHolderGroup.rotation.z = -1.75 + easeOut * 1.47;
+        torchHolderGroup.rotation.x = -0.75 + easeOut * 0.90;
+        torchHolderGroup.scale.setScalar(Math.max(0.01, easeOut));
+
+        dotoGroup.updateMatrixWorld(true);
+        flameCoreMesh.getWorldPosition(torchWorldPos);
+
+        const flameIgnition = Math.max(0, Math.min(1, (torchEquipProgress - 0.42) / 0.58));
+        const flicker = Math.sin(now * 0.028) * 0.25 + Math.cos(now * 0.043) * 0.18;
+
+        torchPointLight.intensity = (2.7 + flicker) * 1.4 * flameIgnition;
+        flameCoreMesh.visible = flameIgnition > 0.05;
+        torchHaloSprite.visible = flameIgnition > 0.05;
+        flameCoreMesh.scale.set(
+            (1 + flicker * 0.18) * flameIgnition,
+            (1 + Math.sin(now * 0.035) * 0.24) * flameIgnition,
+            (1 + flicker * 0.18) * flameIgnition
+        );
+        torchHaloSprite.scale.setScalar((2.6 + flicker * 0.45) * flameIgnition);
+
+        const palette = isRareBlueFlame ? RARE_BLUE_FIRE_COLORS : NORMAL_FIRE_COLORS;
+
+        torchFireParticles.forEach((fp, idx) => {
+            if (flameIgnition <= 0.08) {
+                fp.sprite.visible = false;
+                return;
+            }
+            fp.sprite.visible = true;
+            fp.life += 0.035;
+            if (fp.life >= fp.maxLife) {
+                fp.life = 0;
+                fp.sprite.position.set(
+                    torchWorldPos.x + (Math.random() - 0.5) * 0.22,
+                    torchWorldPos.y + (Math.random() - 0.5) * 0.15,
+                    torchWorldPos.z + (Math.random() - 0.5) * 0.22
+                );
+                fp.colorIdx = Math.floor(Math.random() * palette.length);
+                fp.sprite.material.color.setHex(palette[fp.colorIdx]);
+            } else {
+                fp.sprite.position.x += fp.vx - worldSpeed * 0.42 + Math.sin(now * 0.015 + idx) * 0.012;
+                fp.sprite.position.y += fp.vy;
+                fp.sprite.position.z += fp.vz;
+            }
+            const progress = fp.life / fp.maxLife;
+            const sc = fp.size * (1 - progress * 0.72) * flameIgnition;
+            fp.sprite.scale.set(sc, sc * 1.25, 1);
+            fp.sprite.material.opacity = (1 - progress) * 0.9 * flameIgnition;
+        });
+
+        torchSmokeParticles.forEach((sp) => {
+            if (flameIgnition <= 0.08) {
+                sp.sprite.visible = false;
+                return;
+            }
+            sp.sprite.visible = true;
+            sp.life += 0.022;
+            if (sp.life >= sp.maxLife) {
+                sp.life = 0;
+                sp.sprite.position.set(
+                    torchWorldPos.x - 0.08 + (Math.random() - 0.5) * 0.18,
+                    torchWorldPos.y + 0.32 + Math.random() * 0.12,
+                    torchWorldPos.z + (Math.random() - 0.5) * 0.18
+                );
+            } else {
+                sp.sprite.position.x += sp.vx - worldSpeed * 0.55;
+                sp.sprite.position.y += sp.vy;
+                sp.sprite.position.z += sp.vz;
+            }
+            const progress = sp.life / sp.maxLife;
+            const sc = sp.size * (0.65 + progress * 1.15) * flameIgnition;
+            sp.sprite.scale.set(sc, sc, 1);
+            sp.sprite.material.opacity = Math.sin(progress * Math.PI) * 0.22 * flameIgnition;
+        });
+    }
+
+    const isRainy = currentWeatherKey === 'rain' || currentWeatherKey === 'storm';
+    umbrellaGroup.visible = isRainy;
+    if (isRainy) {
+        dotoGroup.updateMatrixWorld(true);
+        umbrellaGroup.getWorldPosition(umbrellaWorldPos);
+        umbrellaGroup.rotation.z = -0.08 + Math.sin(now * 0.006) * 0.04;
+
+        const domeRadius = 1.64;
+        umbrellaDripParticles.forEach((dp) => {
+            dp.sprite.visible = true;
+            dp.phase += dp.speed;
+
+            if (dp.phase > 1.0) {
+                dp.phase = 0;
+                dp.angle = Math.random() * Math.PI * 2;
+            }
+
+            if (dp.phase < 0.52) {
+                const t = dp.phase / 0.52;
+                const r = t * domeRadius;
+                const domeY = Math.cos(t * Math.PI * 0.48) * 0.68 - 0.05;
+                dp.dropX = umbrellaWorldPos.x + Math.cos(dp.angle) * r;
+                dp.dropY = umbrellaWorldPos.y + domeY;
+                dp.dropZ = umbrellaWorldPos.z + Math.sin(dp.angle) * r;
+                dp.dropVy = -0.08;
+
+                dp.sprite.position.set(dp.dropX, dp.dropY, dp.dropZ);
+                dp.sprite.scale.set(0.06, 0.24, 1);
+                dp.sprite.material.opacity = 0.78;
+            } else {
+                dp.dropVy -= 0.016;
+                dp.dropX -= worldSpeed * 0.45 + 0.02;
+                dp.dropY += dp.dropVy;
+
+                dp.sprite.position.set(dp.dropX, dp.dropY, dp.dropZ);
+                dp.sprite.scale.set(0.065, 0.42, 1);
+                const fallProgress = (dp.phase - 0.52) / 0.48;
+                dp.sprite.material.opacity = Math.max(0, (1 - fallProgress) * 0.88);
+            }
+        });
+    }
+}
+
+function update3DScene(now) {
+    // 0. Расчет коэффициента плавного 2-секундного разгона после паузы
+    let slowMoFactor = 1.0;
+    if (gameState === 'PLAYING' && resumeSlowMoStartTime > 0) {
+        const elapsed = now - resumeSlowMoStartTime;
+        if (elapsed < RESUME_RAMP_DURATION_MS) {
+            const t = elapsed / RESUME_RAMP_DURATION_MS;
+            // Плавный разгон с 0.22x до 1.0x скорости за 2 секунды
+            slowMoFactor = 0.22 + (1 - Math.pow(1 - t, 2)) * 0.78;
+        } else {
+            resumeSlowMoStartTime = 0;
+        }
+    }
+
+    // Расчет базовой скорости с учетом выбранной сложности, роста со временем, Режима Бога и попутного ветра (с 50 очков)
+    const diffCfg = DIFFICULTY_CONFIGS[currentDifficultyKey];
+    const progressiveSpeed = 0.165 + Math.min(0.14, score * 0.0026);
+    const windSpeedBoost = windGustActiveTimer > 0 ? 1.35 : 1.0;
+
+    const activePlaySpeed = progressiveSpeed * diffCfg.speedMul * godConfig.speedMult * windSpeedBoost * slowMoFactor;
+    const worldSpeed = gameState === 'PLAYING' ? activePlaySpeed : (gameState === 'PAUSED' || gameState === 'COUNTDOWN' ? 0 : 0.065);
+
+    if (gameState === 'PLAYING' && now - lastTimeCycleTimestamp >= TIME_CYCLE_INTERVAL_MS) {
+        lastTimeCycleTimestamp = now;
+        advanceTimeOfDayCycle();
+    }
+
+    // Обновление 3D Попутного ветра (начиная со счета 50+)
+    if (gameState === 'PLAYING') {
+        if (score >= 50 && windGustActiveTimer <= 0) {
+            windGustCooldown -= slowMoFactor;
+            if (windGustCooldown <= 0) {
+                triggerTailwindGust();
+                windGustCooldown = 360 + Math.floor(Math.random() * 240);
+            }
+        }
+
+        if (windGustActiveTimer > 0) {
+            windGustActiveTimer -= slowMoFactor;
+            const windIntensity = Math.min(1, windGustActiveTimer / 40);
+            windStreaks3D.forEach((ws, idx) => {
+                ws.mesh.visible = true;
+                // Ветер дует сзади (слева направо), обгоняя Мейшо Дото
+                ws.mesh.position.x += ws.speed * slowMoFactor;
+                ws.mesh.position.y = ws.baseY + Math.sin(now * 0.01 + ws.wavePhase) * 0.35;
+                ws.mesh.material.opacity = 0.42 * windIntensity * (0.6 + 0.4 * Math.sin(now * 0.02 + idx));
+                if (ws.mesh.position.x > 28) {
+                    ws.mesh.position.x = -28;
+                    ws.baseY = GROUND_Y + 1.5 + Math.random() * (CEILING_Y - GROUND_Y - 2);
+                }
+            });
+            if (windGustActiveTimer <= 0) {
+                windHudBadge.classList.add('hidden');
+                windStreaks3D.forEach(ws => { ws.mesh.visible = false; });
+            }
+        }
+    }
+
+    fencePosts.forEach(post => {
+        post.position.x -= worldSpeed;
+        if (post.position.x < -45) post.position.x += 36 * 2.6;
+    });
+    bgTrees.forEach(tree => {
+        tree.position.x -= worldSpeed * 0.65;
+        if (tree.position.x < -58) tree.position.x += 24 * 4.8;
+    });
+    bgHills.forEach(hill => {
+        hill.position.x -= worldSpeed * 0.25;
+        if (hill.position.x < -82) hill.position.x += 18 * 9.5;
+    });
+
+    volumetricClouds.forEach(c => {
+        const cloudFreeze = (gameState === 'PAUSED' || gameState === 'COUNTDOWN') ? 0.15 : 1;
+        c.mesh.position.x -= (c.speed * cloudFreeze) + worldSpeed * 0.22;
+        c.mesh.position.y = c.baseY + Math.sin(now * 0.001 + c.bobSeed) * 0.25;
+        if (c.mesh.position.x < -62) {
+            c.mesh.position.x = 62;
+        }
+    });
+
+    weather3DParticles.forEach(p => {
+        const weatherFreeze = (gameState === 'PAUSED' || gameState === 'COUNTDOWN') ? 0.2 : 1;
+        p.swirlPhase += p.swirlSpeed * weatherFreeze;
+        p.sprite.position.x += (p.vx * weatherFreeze) - worldSpeed * 0.35 + (currentWeatherKey === 'snow' ? Math.sin(p.swirlPhase) * 0.035 : 0);
+        p.sprite.position.y += p.vy * weatherFreeze;
+        p.sprite.position.z += p.vz * weatherFreeze;
+
+        if (p.sprite.position.y < GROUND_Y) {
+            p.sprite.position.y = CEILING_Y + 8 + Math.random() * 6;
+            p.sprite.position.x = (Math.random() - 0.5) * 58;
+        }
+        if (p.sprite.position.x < -32) p.sprite.position.x = 32;
+        if (p.sprite.position.x > 32) p.sprite.position.x = -32;
+    });
+
+    if (currentWeatherKey === 'storm') {
+        lightningTimer--;
+        if (lightningTimer <= 0) {
+            trigger3DLightning();
+            lightningTimer = 140 + Math.floor(Math.random() * 210);
+        }
+    }
+    if (lightningLight.intensity > 0) {
+        lightningLight.intensity = Math.max(0, lightningLight.intensity - 0.22);
+        if (lightningLight.intensity <= 0.1 && lightningMesh3D) {
+            scene.remove(lightningMesh3D);
+            lightningMesh3D = null;
+        }
+    }
+
+    const targetCamX = -2.2 + pointerNormX * 1.4;
+    const targetCamY = 1.1 + (doto.y * 0.18) - pointerNormY * 0.9;
+    camera.position.x += (targetCamX - camera.position.x) * 0.06;
+    camera.position.y += (targetCamY - camera.position.y) * 0.06;
+    camera.lookAt(0.8, doto.y * 0.25, 0);
+
+    doto.radius = doto.baseRadius * godConfig.dotoScale;
+
+    if (gameState === 'MENU') {
+        doto.y = 1.2 + Math.sin(now * 0.0032) * 0.65;
+        doto.pitch = Math.sin(now * 0.0025) * 0.12;
+        dotoGroup.position.set(doto.x, doto.y, 0);
+        dotoGroup.scale.setScalar(godConfig.dotoScale);
+        dotoGroup.rotation.set(0, Math.sin(now * 0.002) * 0.24, doto.pitch);
+        leftEar3D.rotation.z = 0.42 + Math.sin(now * 0.008) * 0.1;
+        rightEar3D.rotation.z = -0.42 - Math.sin(now * 0.008) * 0.1;
+        updateTorchAndUmbrellaEffects(now, worldSpeed);
+        syncHtmlSphereDecal();
+        return;
+    }
+
+    if (gameState !== 'PLAYING') {
+        updateTorchAndUmbrellaEffects(now, worldSpeed);
+        syncHtmlSphereDecal();
+        return;
+    }
+
+    // Физика полета с учетом коэффициента замедления после паузы (slowMoFactor)
+    doto.vy += doto.gravity * slowMoFactor;
+    doto.y += doto.vy * slowMoFactor;
+
+    doto.scaleX += (1 - doto.scaleX) * 0.15;
+    doto.scaleY += (1 - doto.scaleY) * 0.15;
+    doto.earWiggle *= 0.88;
+
+    if (doto.shieldTimer > 0) {
+        doto.shieldTimer--;
+        shieldRing3D.visible = true;
+        shieldRing3D.rotation.z += 0.06;
+        shieldRing3D.rotation.y += 0.04;
+        if (doto.shieldTimer === 0) {
+            shieldRing3D.visible = false;
+            comboBadge.classList.add('hidden');
+        }
+    }
+
+    const targetPitch = Math.max(-0.65, Math.min(0.65, doto.vy * 2.1));
+    doto.pitch += (targetPitch - doto.pitch) * 0.2;
+
+    dotoGroup.position.set(doto.x, doto.y, 0);
+    dotoGroup.scale.set(
+        doto.scaleX * godConfig.dotoScale,
+        doto.scaleY * godConfig.dotoScale,
+        godConfig.dotoScale
+    );
+    // Когда дует попутный ветер сзади, Мейшо Дото чуть наклоняется вперед
+    const windLean = windGustActiveTimer > 0 ? -0.14 : 0;
+    dotoGroup.rotation.set(0, Math.sin(now * 0.005) * 0.18, doto.pitch + windLean);
+
+    const earSwing = Math.sin(now * 0.015) * 0.12 + doto.earWiggle * 0.35;
+    leftEar3D.rotation.z = 0.42 + earSwing;
+    rightEar3D.rotation.z = -0.42 - earSwing;
+
+    updateTorchAndUmbrellaEffects(now, worldSpeed);
+    syncHtmlSphereDecal();
+
+    for (let i = trailMeshes.length - 1; i > 0; i--) {
+        trailMeshes[i].x = trailMeshes[i - 1].x - worldSpeed;
+        trailMeshes[i].y = trailMeshes[i - 1].y;
+        trailMeshes[i].z = trailMeshes[i - 1].z;
+    }
+    trailMeshes[0].x = doto.x - 0.9 * godConfig.dotoScale;
+    trailMeshes[0].y = doto.y;
+    trailMeshes[0].z = 0;
+
+    trailMeshes.forEach((t, idx) => {
+        const ratio = 1 - idx / trailMeshes.length;
+        t.mesh.visible = true;
+        t.mesh.position.set(t.x, t.y, t.z);
+        t.mesh.scale.setScalar(ratio * 0.9 * godConfig.dotoScale);
+        t.mesh.material.opacity = ratio * 0.42;
+    });
+
+    // Спавн препятствий с учетом сложности, замедления и настроек Режима Бога
+    spawnTimer += slowMoFactor;
+    const baseInterval = Math.max(68, Math.floor(115 - score * 0.65));
+    const spawnInterval = Math.max(38, Math.floor(baseInterval * diffCfg.spawnIntervalMul * godConfig.spawnDistanceMult));
+    if (spawnTimer >= spawnInterval) {
+        spawnTimer = 0;
+        spawn3DObstacle();
+    }
+
+    for (let i = obstacles3D.length - 1; i >= 0; i--) {
+        const obs = obstacles3D[i];
+        obs.x -= worldSpeed;
+        obs.group.position.x = obs.x;
+
+        if (!obs.passed && obs.x + obs.halfWidth < doto.x) {
+            obs.passed = true;
+            const gained = doto.shieldTimer > 0 ? 2 : 1;
+            const prevScore = score;
+            score += gained;
+            liveScoreEl.textContent = score;
+            sound.playScore();
+            spawn3DBurst(doto.x, doto.y + 1.1, 0, 0xfbbf24, 6);
+
+            // Как только игрок впервые достигает 50 очков — запускаем первый порыв 3D-ветра!
+            if (prevScore < 50 && score >= 50 && windGustActiveTimer <= 0) {
+                triggerTailwindGust();
+            }
+        }
+
+        const hitR = doto.radius * 0.76;
+        if (doto.x + hitR > obs.x - obs.halfWidth && doto.x - hitR < obs.x + obs.halfWidth) {
+            if (doto.y + hitR > obs.topEdgeY || doto.y - hitR < obs.bottomEdgeY) {
+                if (godConfig.invulnerable) {
+                    // В Режиме Бога (Неуязвимость) Мейшо Дото пролетает сквозь столбы с золотыми искрами
+                    continue;
+                } else if (doto.shieldTimer > 0) {
+                    doto.shieldTimer = 0;
+                    shieldRing3D.visible = false;
+                    comboBadge.classList.add('hidden');
+                    spawn3DBurst(obs.x, doto.y, 0, 0xfbbf24, 18);
+                    obstaclesGroup.remove(obs.group);
+                    obstacles3D.splice(i, 1);
+                    sound.playCarrot();
+                    continue;
+                } else {
+                    triggerGameOver();
+                    return;
+                }
+            }
+        }
+
+        if (obs.x < -28) {
+            obstaclesGroup.remove(obs.group);
+            obstacles3D.splice(i, 1);
+        }
+    }
+
+    for (let i = carrots3D.length - 1; i >= 0; i--) {
+        const c = carrots3D[i];
+        c.x -= worldSpeed;
+        c.bobPhase += 0.08 * slowMoFactor;
+        const cy = c.baseY + Math.sin(c.bobPhase) * 0.35;
+        c.mesh.position.set(c.x, cy, 0);
+        c.mesh.rotation.y += 0.06 * slowMoFactor;
+
+        const dist = Math.hypot(doto.x - c.x, doto.y - cy);
+        if (!c.collected && dist < doto.radius + 0.85) {
+            c.collected = true;
+            const prevScore = score;
+            score += 3;
+            totalCarrots++;
+            localStorage.setItem('doto_total_carrots', totalCarrots);
+            liveScoreEl.textContent = score;
+
+            if (prevScore < 50 && score >= 50 && windGustActiveTimer <= 0) {
+                triggerTailwindGust();
+            }
+
+            doto.shieldTimer = 360;
+            comboBadge.classList.remove('hidden');
+            sound.playCarrot();
+            spawn3DBurst(c.x, cy, 0, 0xf97316, 15);
+        }
+
+        if (c.x < -26 || c.collected) {
+            obstaclesGroup.remove(c.mesh);
+            carrots3D.splice(i, 1);
+        }
+    }
+
+    if (doto.y + doto.radius > CEILING_Y) {
+        doto.y = CEILING_Y - doto.radius;
+        doto.vy = 0;
+    }
+    if (doto.y - doto.radius < GROUND_Y) {
+        doto.y = GROUND_Y + doto.radius;
+        if (godConfig.invulnerable) {
+            // При неуязвимости в Режиме Бога отталкиваемся от газона вверх
+            doto.vy = doto.jumpStrength * 0.85;
+        } else {
+            triggerGameOver();
+            return;
+        }
+    }
+
+    for (let i = burstParticles3D.length - 1; i >= 0; i--) {
+        const bp = burstParticles3D[i];
+        bp.mesh.position.x += bp.vx;
+        bp.mesh.position.y += bp.vy;
+        bp.mesh.position.z += bp.vz;
+        bp.alpha -= 0.035;
+        bp.mesh.material.opacity = Math.max(0, bp.alpha);
+        bp.mesh.scale.multiplyScalar(0.95);
+        if (bp.alpha <= 0) {
+            scene.remove(bp.mesh);
+            burstParticles3D.splice(i, 1);
+        }
+    }
+}
+
+function gameLoop(now = performance.now()) {
+    fpsTracker.update(now);
+    update3DScene(now);
+    updateAndDrawConfetti();
+    renderer.render(scene, camera);
+    requestAnimationFrame(gameLoop);
+}
+
+/**
+ * Адаптация размера 3D-рендерера при ресайзе окна
+ */
+function resize3D() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+}
+window.addEventListener('resize', resize3D);
+
+/**
+ * ============================================================================
+ * ОБРАБОТЧИКИ СОБЫТИЙ, ПАУЗЫ, СЛОЖНОСТИ И РЕЖИМА БОГА
+ * ============================================================================
+ */
+document.getElementById('startBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startGame();
+});
+
+document.getElementById('restartBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startGame();
+});
+
+function returnToMainMenu() {
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    countdownOverlay.classList.add('hidden');
+    countdownOverlay.classList.remove('flex');
+    pauseMenu.classList.add('menu-hidden');
+    gameOverMenu.classList.add('menu-hidden');
+    godModeModal.classList.add('menu-hidden');
+    liveScoreContainer.classList.add('opacity-0');
+    hudPauseBtn.classList.add('hidden');
+    hudPauseBtn.classList.remove('flex');
+    windHudBadge.classList.add('hidden');
+
+    canvas.classList.remove('canvas-sharp');
+    canvas.classList.add('canvas-blurred');
+    dotoSphereDecal.classList.remove('decal-sharp');
+    dotoSphereDecal.classList.add('decal-blurred');
+
+    gameState = 'MENU';
+    mainMenu.classList.remove('menu-hidden');
+
+    if (hintHideTimeout) clearTimeout(hintHideTimeout);
+    if (weatherCompactTimeout) clearTimeout(weatherCompactTimeout);
+    topRightControls.classList.remove('controls-hidden');
+    weatherPill.classList.remove('weather-compact');
+    controlsHint.classList.remove('hint-hidden');
+}
+
+document.getElementById('backToMenuBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    returnToMainMenu();
+});
+
+// Кнопки Паузы и меню паузы
+hudPauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (gameState === 'PLAYING') {
+        pauseGame();
+    } else if (gameState === 'PAUSED') {
+        resumeFromPauseWithCountdown();
+    }
+});
+
+document.getElementById('resumeBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    resumeFromPauseWithCountdown();
+});
+
+document.getElementById('pauseRestartBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startGame();
+});
+
+document.getElementById('pauseToMenuBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    returnToMainMenu();
+});
+
+// Клик по аватарке Мейшо Дото в меню: анимация + звук 2.mp3 + 10 нажатий открывают Режим Бога с конфетти!
+const menuAvatarClickable = document.getElementById('menuAvatarClickable');
+const menuAvatarInner = document.getElementById('menuAvatarInner');
+const avatarTapCounterBadge = document.getElementById('avatarTapCounterBadge');
+
+menuAvatarClickable.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sound.init();
+
+    // Воспроизводим 2.mp3 (или синтезированный милый звук, если 2.mp3 нет в папке)
+    menuTapAudio.currentTime = 0;
+    menuTapAudio.play().catch(() => {
+        sound.playAvatarTapFallback();
+    });
+
+    // Запускаем пружинистую CSS-анимацию на аватарке и легкий прыжок 3D-шара на фоне
+    menuAvatarInner.classList.remove('avatar-click-pop');
+    void menuAvatarInner.offsetWidth;
+    menuAvatarInner.classList.add('avatar-click-pop');
+    doto.scaleX = 1.24;
+    doto.scaleY = 0.82;
+    spawn3DBurst(doto.x, doto.y + 0.8, 0.5, 0xfbbf24, 8);
+
+    avatarTapCount++;
+    if (!godModeUnlocked) {
+        avatarTapCounterBadge.classList.remove('hidden');
+        avatarTapCounterBadge.textContent = `${avatarTapCount}/10`;
+
+        if (avatarTapCount >= 10) {
+            godModeUnlocked = true;
+            avatarTapCounterBadge.textContent = '⚡ БОГ!';
+            avatarTapCounterBadge.className = 'absolute -top-1 -right-1 bg-gradient-to-r from-amber-400 to-fuchsia-500 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-lg';
+
+            // Показываем кнопку "+" рядом с кнопками рандома и звука
+            godModeOpenBtn.classList.remove('hidden');
+            godModeOpenBtn.classList.add('flex');
+
+            // Запускаем конфетти и праздничный аккорд!
+            launchGodModeConfetti();
+            sound.playCarrot();
+            godModeModal.classList.remove('menu-hidden');
+        }
+    } else {
+        launchGodModeConfetti();
+    }
+});
+
+// Открытие и закрытие окна Режима Бога по кнопке "＋"
+godModeOpenBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    godModeModal.classList.toggle('menu-hidden');
+});
+
+document.getElementById('closeGodModeBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    godModeModal.classList.add('menu-hidden');
+});
+
+document.getElementById('godApplyCloseBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    godModeModal.classList.add('menu-hidden');
+});
+
+// Обработчики ползунков и переключателей Режима Бога
+function updateGodHudBadge() {
+    const isModified =
+        godConfig.invulnerable ||
+        godConfig.forceBlueFlame ||
+        godConfig.speedMult !== 1.0 ||
+        godConfig.dotoScale !== 1.0 ||
+        godConfig.gapBonus !== 0.0 ||
+        godConfig.spawnDistanceMult !== 1.0 ||
+        godConfig.jumpMult !== 1.0;
+
+    if (isModified) {
+        godHudBadge.classList.remove('hidden');
+    } else {
+        godHudBadge.classList.add('hidden');
+    }
+}
+
+document.getElementById('godInvulnerableToggle').addEventListener('change', (e) => {
+    godConfig.invulnerable = e.target.checked;
+    updateGodHudBadge();
+});
+
+document.getElementById('godBlueFlameToggle').addEventListener('change', (e) => {
+    godConfig.forceBlueFlame = e.target.checked;
+    isRareBlueFlame = godConfig.forceBlueFlame;
+    applyTorchPalette();
+    applyTimeOfDayEnvironment(false);
+    updateGodHudBadge();
+});
+
+document.getElementById('godSpeedSlider').addEventListener('input', (e) => {
+    godConfig.speedMult = parseFloat(e.target.value);
+    document.getElementById('godSpeedVal').textContent = godConfig.speedMult.toFixed(1) + 'x';
+    updateGodHudBadge();
+});
+
+document.getElementById('godScaleSlider').addEventListener('input', (e) => {
+    godConfig.dotoScale = parseFloat(e.target.value);
+    document.getElementById('godScaleVal').textContent = godConfig.dotoScale.toFixed(1) + 'x';
+    updateGodHudBadge();
+});
+
+document.getElementById('godGapSlider').addEventListener('input', (e) => {
+    godConfig.gapBonus = parseFloat(e.target.value);
+    const sign = godConfig.gapBonus > 0 ? '+' : '';
+    document.getElementById('godGapVal').textContent = `${sign}${godConfig.gapBonus.toFixed(2)}`;
+    updateGodHudBadge();
+});
+
+document.getElementById('godSpawnSlider').addEventListener('input', (e) => {
+    godConfig.spawnDistanceMult = parseFloat(e.target.value);
+    document.getElementById('godSpawnVal').textContent = godConfig.spawnDistanceMult.toFixed(1) + 'x';
+    updateGodHudBadge();
+});
+
+document.getElementById('godJumpSlider').addEventListener('input', (e) => {
+    godConfig.jumpMult = parseFloat(e.target.value);
+    document.getElementById('godJumpVal').textContent = godConfig.jumpMult.toFixed(1) + 'x';
+    updateGodHudBadge();
+});
+
+document.getElementById('godAddScoreBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sound.init();
+    score += 50;
+    liveScoreEl.textContent = score;
+    sound.playCarrot();
+    launchGodModeConfetti();
+});
+
+document.getElementById('godTriggerWindBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sound.init();
+    triggerTailwindGust();
+});
+
+document.getElementById('godResetBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    godConfig.invulnerable = false;
+    godConfig.forceBlueFlame = false;
+    godConfig.speedMult = 1.0;
+    godConfig.dotoScale = 1.0;
+    godConfig.gapBonus = 0.0;
+    godConfig.spawnDistanceMult = 1.0;
+    godConfig.jumpMult = 1.0;
+
+    document.getElementById('godInvulnerableToggle').checked = false;
+    document.getElementById('godBlueFlameToggle').checked = false;
+    document.getElementById('godSpeedSlider').value = '1.0';
+    document.getElementById('godScaleSlider').value = '1.0';
+    document.getElementById('godGapSlider').value = '0';
+    document.getElementById('godSpawnSlider').value = '1.0';
+    document.getElementById('godJumpSlider').value = '1.0';
+
+    document.getElementById('godSpeedVal').textContent = '1.0x';
+    document.getElementById('godScaleVal').textContent = '1.0x';
+    document.getElementById('godGapVal').textContent = 'Стандарт (0.0)';
+    document.getElementById('godSpawnVal').textContent = '1.0x';
+    document.getElementById('godJumpVal').textContent = '1.0x';
+    updateGodHudBadge();
+});
+
+// Выбор сложности в главном меню
+document.querySelectorAll('.diff-chip').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.init();
+        document.querySelectorAll('.diff-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        currentDifficultyKey = btn.getAttribute('data-diff');
+        const dCfg = DIFFICULTY_CONFIGS[currentDifficultyKey];
+        const diffLabel = document.getElementById('difficultyModeLabel');
+        diffLabel.textContent = dCfg.name;
+        diffLabel.className = dCfg.labelColor;
+        sound.playScore();
+    });
+});
+
+document.getElementById('rerollWeatherBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sound.init();
+    pickAndApplyWeather(true);
+});
+
+document.getElementById('soundToggleBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    sound.init();
+    const isOn = sound.toggle();
+    document.getElementById('soundIcon').textContent = isOn ? '🔊' : '🔇';
+});
+
+// Переключение чипов погоды в главном меню
+document.querySelectorAll('.weather-chip:not(.time-chip)').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.init();
+        document.querySelectorAll('.weather-chip:not(.time-chip)').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const mode = btn.getAttribute('data-weather');
+        selectedWeatherPreference = mode;
+        const label = document.getElementById('weatherModeLabel');
+
+        if (mode === 'random') {
+            label.textContent = '🎲 Рандом каждый забег';
+            pickAndApplyWeather(true);
+        } else {
+            const cfg = WEATHER_CONFIGS[mode];
+            label.textContent = `${cfg.icon} Всегда: ${cfg.name}`;
+            pickAndApplyWeather(false);
+        }
+    });
+});
+
+// Переключение времени суток в главном меню
+document.querySelectorAll('.time-chip').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.init();
+        document.querySelectorAll('.time-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const tMode = btn.getAttribute('data-time');
+        selectedTimePreference = tMode;
+        const tLabel = document.getElementById('timeModeLabel');
+
+        if (tMode === 'random') {
+            tLabel.textContent = '🎲 Рандом (Гроза = 🌙 Ночь)';
+            pickAndApplyWeather(false);
+        } else {
+            const tCfg = TIME_OF_DAY_CONFIGS[tMode];
+            tLabel.textContent = `${tCfg.icon} ${tCfg.name} (Гроза = 🌙)`;
+            pickAndApplyWeather(false);
+        }
+    });
+});
+
+// Управление прыжком и паузой (Мышь, Тачскрин и Клавиатура)
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape') {
+        e.preventDefault();
+        if (!godModeModal.classList.contains('menu-hidden')) {
+            godModeModal.classList.add('menu-hidden');
+            return;
+        }
+        if (gameState === 'PLAYING') {
+            pauseGame();
+        } else if (gameState === 'PAUSED') {
+            resumeFromPauseWithCountdown();
+        }
+        return;
+    }
+
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+        e.preventDefault();
+        if (gameState === 'PLAYING') {
+            dotoJump();
+        } else if (gameState === 'MENU' && godModeModal.classList.contains('menu-hidden')) {
+            startGame();
+        } else if (gameState === 'GAMEOVER') {
+            startGame();
+        }
+    }
+});
+
+canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (gameState === 'PLAYING') {
+        dotoJump();
+    }
+});
+
+// Инициализация при загрузке окна
+window.onload = function () {
+    resize3D();
+    pickAndApplyWeather(true);
+    requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
